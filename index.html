@@ -384,9 +384,17 @@ a { color: var(--accent); text-decoration: none; }
 .opponent-tiles { display: flex; gap: 2px; flex-wrap: wrap; }
 .mini-tile { width: 14px; height: 22px; background: var(--tile-back); border: 1px solid var(--border); border-radius: 2px; }
 
-.board-wrapper { flex: 1; overflow: auto; position: relative; display: flex; align-items: center; justify-content: center; -webkit-overflow-scrolling: touch; }
-.board-container { position: relative; min-width: 300px; min-height: 200px; padding: 40px; }
-.board-tile { position: absolute; animation: tilePlace 0.3s ease; }
+.board-wrapper {
+  flex: 1; overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-overflow-scrolling: touch;
+}
+.board-container {
+  position: absolute;
+  transform-origin: 0 0;
+  /* width/height/transform set dynamically by renderBoard() */
+}
+.board-tile { position: absolute; }
 
 .hand-area { background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 10px 8px; flex-shrink: 0; }
 .hand-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; padding: 0 4px; }
@@ -469,11 +477,13 @@ a { color: var(--accent); text-decoration: none; }
   .chat-panel { width: 100%; }
   .hand-tiles { justify-content: flex-start; flex-wrap: nowrap; }
   .players-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .opponent-area { padding: 4px 8px; }
-  .board-container { padding: 20px; }
+  .opponent-area { padding: 3px 6px; }
   .game-topbar { padding: 6px 8px; }
   .game-topbar .scores { gap: 8px; font-size: 0.8rem; }
   .lobby-tab { font-size: 0.76rem; padding: 7px 8px; }
+  .hand-area { padding: 8px 4px; }
+  .hand-tiles { gap: 4px; padding: 2px 0 6px; }
+  .opponent-info .opp-name { max-width: 70px; }
 }
 @media (max-width: 400px) {
   .auth-card { padding: 20px; }
@@ -484,6 +494,24 @@ a { color: var(--accent); text-decoration: none; }
   .join-code-bar input { width: 100%; }
   .share-row { flex-wrap: wrap; }
   .share-row input { width: 100%; }
+  .opponent-info .opp-name { max-width: 55px; }
+}
+/* Landscape on phones: give board more room */
+@media (max-height: 500px) and (orientation: landscape) {
+  .game-topbar { padding: 4px 8px; min-height: 36px; }
+  .game-topbar .scores { font-size: 0.75rem; gap: 6px; }
+  .score-val { font-size: 0.95rem; }
+  .game-topbar .turn-indicator { font-size: 0.72rem; }
+  .opponent-area { padding: 2px 4px; }
+  .opponent-info .opp-avatar { width: 22px; height: 22px; font-size: 0.6rem; }
+  .opponent-info .opp-name { font-size: 0.7rem; }
+  .opponent-info .opp-tiles { font-size: 0.6rem; }
+  .mini-tile { width: 10px; height: 16px; }
+  .hand-area { padding: 4px 4px; }
+  .hand-tiles { gap: 3px; padding: 2px 0 4px; }
+  .hand-controls { margin-bottom: 2px; }
+  .hand-label { font-size: 0.72rem; }
+  #passBtn { padding: 4px 10px; font-size: 0.75rem; }
 }
 @media (min-width: 1024px) { .hand-tiles { justify-content: center; } }
 </style>
@@ -1017,51 +1045,170 @@ function renderOpponents(gs, mySeat) {
 
 const TILE_W=30, TILE_H=60, TILE_GAP=2;
 
+/*═══════════════════════════════════════════════════════════════
+  renderBoard — Auto-fit: scales all tiles to always fit on screen
+═══════════════════════════════════════════════════════════════*/
 function renderBoard(gs) {
-  const c = document.getElementById('boardContainer'); c.innerHTML = '';
-  if (!gs.board || gs.board.length === 0) { c.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:40px;">Esperando primera ficha...</div>'; c.style.width='300px'; c.style.height='200px'; return; }
-  const layout = calculateBoardLayout(gs.board);
-  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  layout.forEach(it => { const w=it.horizontal?TILE_H:TILE_W, h=it.horizontal?TILE_W:TILE_H; minX=Math.min(minX,it.x); minY=Math.min(minY,it.y); maxX=Math.max(maxX,it.x+w); maxY=Math.max(maxY,it.y+h); });
-  const pad=30; c.style.width=(maxX-minX+pad*2)+'px'; c.style.height=(maxY-minY+pad*2)+'px';
-  layout.forEach(it => { const d=document.createElement('div'); d.className='board-tile'; d.style.left=(it.x-minX+pad)+'px'; d.style.top=(it.y-minY+pad)+'px'; d.innerHTML=createTileSVG(it.a,it.b,it.horizontal,false,1); c.appendChild(d); });
-  const wr=document.getElementById('boardWrapper'), last=layout[layout.length-1];
-  if(last){ wr.scrollTo({left:(last.x-minX+pad)-wr.clientWidth/2+TILE_W, top:(last.y-minY+pad)-wr.clientHeight/2+TILE_H, behavior:'smooth'}); }
+  const container = document.getElementById('boardContainer');
+  const wrapper   = document.getElementById('boardWrapper');
+  container.innerHTML = '';
+  container.style.transform = '';
+  container.style.width  = '';
+  container.style.height = '';
+  container.style.left = '';
+  container.style.top  = '';
+
+  if (!gs.board || gs.board.length === 0) {
+    container.style.width = '100%'; container.style.height = '100%';
+    container.style.position = 'relative';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">Esperando primera ficha...</div>';
+    return;
+  }
+
+  /* Get available viewport for the board */
+  const wrapW = wrapper.clientWidth;
+  const wrapH = wrapper.clientHeight;
+
+  /* Calculate layout with adaptive turn distances based on viewport */
+  const maxSpreadX = Math.max(280, wrapW * 1.8);
+  const maxSpreadY = Math.max(180, wrapH * 1.4);
+  const layout = calculateBoardLayout(gs.board, maxSpreadX, maxSpreadY);
+
+  /* Compute bounding box of all placed tiles */
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  layout.forEach(it => {
+    const w = it.horizontal ? TILE_H : TILE_W;
+    const h = it.horizontal ? TILE_W : TILE_H;
+    minX = Math.min(minX, it.x);
+    minY = Math.min(minY, it.y);
+    maxX = Math.max(maxX, it.x + w);
+    maxY = Math.max(maxY, it.y + h);
+  });
+
+  const PAD = 12;
+  const boardW = (maxX - minX) + PAD * 2;
+  const boardH = (maxY - minY) + PAD * 2;
+
+  /* Set container to exact board size */
+  container.style.width  = boardW + 'px';
+  container.style.height = boardH + 'px';
+  container.style.position = 'absolute';
+
+  /* Place tiles */
+  layout.forEach(it => {
+    const d = document.createElement('div');
+    d.className = 'board-tile';
+    d.style.left = (it.x - minX + PAD) + 'px';
+    d.style.top  = (it.y - minY + PAD) + 'px';
+    d.innerHTML = createTileSVG(it.a, it.b, it.horizontal, false, 1);
+    container.appendChild(d);
+  });
+
+  /* Auto-scale: compute scale so entire board fits in wrapper with margin */
+  const marginX = 8, marginY = 8;
+  const availW = Math.max(100, wrapW - marginX * 2);
+  const availH = Math.max(100, wrapH - marginY * 2);
+  const scaleX = availW / boardW;
+  const scaleY = availH / boardH;
+  const scale  = Math.min(scaleX, scaleY, 1.5); /* never zoom in more than 1.5× */
+
+  /* Apply transform and center */
+  const scaledW = boardW * scale;
+  const scaledH = boardH * scale;
+  const offsetX = (wrapW - scaledW) / 2;
+  const offsetY = (wrapH - scaledH) / 2;
+
+  container.style.transformOrigin = '0 0';
+  container.style.transform = 'scale(' + scale.toFixed(4) + ')';
+  container.style.left = offsetX + 'px';
+  container.style.top  = offsetY + 'px';
 }
 
-function calculateBoardLayout(board) {
-  if (!board||board.length===0) return [];
-  const layout=[], cx=400, cy=200;
-  const f=board[0], isD=f.a===f.b; layout.push({...f,x:cx,y:cy,horizontal:!isD});
-  let lx=cx,ly=cy,ld='left',rx=cx,ry=cy,rd='right';
-  if (!isD) rx=cx+TILE_H+TILE_GAP; else rx=cx+TILE_W+TILE_GAP;
-  let ltc=0,rtc=0;
-  for (let i=1;i<board.length;i++){
-    const t=board[i], s=t.side, db=t.a===t.b;
-    if(s==='right'){ const it=placeTile(t,rx,ry,rd,db); layout.push(it);
-      if(rd==='right'){ rx=it.x+(db?TILE_W+TILE_GAP:TILE_H+TILE_GAP); if(rx>cx+500&&rtc===0){rd='down';rtc++;} }
-      else if(rd==='down'){ ry=it.y+(db?TILE_H+TILE_GAP:TILE_W+TILE_GAP+10); if(ry>cy+200&&rtc===1){rd='left';rtc++;} }
-      else if(rd==='left'){ rx=it.x-(db?TILE_W+TILE_GAP:TILE_H+TILE_GAP); }
-    } else { const it=placeTileLeft(t,lx,ly,ld,db); layout.push(it);
-      if(ld==='left'){ lx=it.x-TILE_GAP; if(lx<cx-500&&ltc===0){ld='up';ltc++;} }
-      else if(ld==='up'){ ly=it.y-TILE_GAP; if(ly<cy-200&&ltc===1){ld='right';ltc++;} }
-      else if(ld==='right'){ lx=it.x+(db?TILE_W+TILE_GAP:TILE_H+TILE_GAP); }
+/*═══════════════════════════════════════════════════════════════
+  calculateBoardLayout — Adaptive turn thresholds
+  
+  maxSpreadX/Y control when the chain turns to keep the board
+  from growing infinitely in one direction.
+═══════════════════════════════════════════════════════════════*/
+function calculateBoardLayout(board, maxSpreadX, maxSpreadY) {
+  if (!board || board.length === 0) return [];
+
+  if (!maxSpreadX) maxSpreadX = 600;
+  if (!maxSpreadY) maxSpreadY = 400;
+  const turnX = maxSpreadX / 2;
+  const turnY = maxSpreadY / 2;
+
+  const layout = [];
+  const cx = 400, cy = 300;
+
+  /* First tile */
+  const f = board[0], isD = f.a === f.b;
+  layout.push({ ...f, x: cx, y: cy, horizontal: !isD });
+
+  let lx = cx, ly = cy, ld = 'left';
+  let rx = cx, ry = cy, rd = 'right';
+  if (!isD) rx = cx + TILE_H + TILE_GAP;
+  else      rx = cx + TILE_W + TILE_GAP;
+
+  let ltc = 0, rtc = 0;
+
+  for (let i = 1; i < board.length; i++) {
+    const t = board[i], s = t.side, db = t.a === t.b;
+
+    if (s === 'right') {
+      const it = placeTile(t, rx, ry, rd, db);
+      layout.push(it);
+
+      if (rd === 'right') {
+        rx = it.x + (db ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
+        if (rx > cx + turnX && rtc === 0) { rd = 'down'; rtc++; }
+      } else if (rd === 'down') {
+        ry = it.y + (db ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 8);
+        if (ry > cy + turnY && rtc === 1) { rd = 'left'; rtc++; }
+      } else if (rd === 'left') {
+        rx = it.x - (db ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
+        if (rx < cx - turnX && rtc === 2) { rd = 'up'; rtc++; }
+      } else if (rd === 'up') {
+        ry = it.y - (db ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 8);
+      }
+    } else {
+      const it = placeTileLeft(t, lx, ly, ld, db);
+      layout.push(it);
+
+      if (ld === 'left') {
+        lx = it.x - TILE_GAP;
+        if (lx < cx - turnX && ltc === 0) { ld = 'up'; ltc++; }
+      } else if (ld === 'up') {
+        ly = it.y - TILE_GAP;
+        if (ly < cy - turnY && ltc === 1) { ld = 'right'; ltc++; }
+      } else if (ld === 'right') {
+        lx = it.x + (db ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
+        if (lx > cx + turnX && ltc === 2) { ld = 'down'; ltc++; }
+      } else if (ld === 'down') {
+        ly = it.y + (db ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 8);
+      }
     }
   }
   return layout;
 }
 
-function placeTile(t,x,y,dir,isD){ let h=true,px=x,py=y;
-  if(dir==='right'){h=!isD;py=isD?y-(TILE_H-TILE_W)/2:y;}
-  else if(dir==='down'){h=isD;px=isD?x-(TILE_H-TILE_W)/2:x;}
-  else if(dir==='left'){h=!isD;px=isD?x-TILE_W:x-TILE_H;py=isD?y-(TILE_H-TILE_W)/2:y;}
-  return{...t,x:px,y:py,horizontal:h};}
+function placeTile(t, x, y, dir, isD) {
+  let h = true, px = x, py = y;
+  if (dir === 'right')     { h = !isD; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
+  else if (dir === 'down') { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; }
+  else if (dir === 'left') { h = !isD; px = isD ? x - TILE_W : x - TILE_H; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
+  else if (dir === 'up')   { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; py = isD ? y - TILE_W : y - TILE_H; }
+  return { ...t, x: px, y: py, horizontal: h };
+}
 
-function placeTileLeft(t,x,y,dir,isD){ let h=true,px=x,py=y;
-  if(dir==='left'){h=!isD;px=isD?x-TILE_W:x-TILE_H;py=isD?y-(TILE_H-TILE_W)/2:y;}
-  else if(dir==='up'){h=isD;px=isD?x-(TILE_H-TILE_W)/2:x;py=isD?y-TILE_W:y-TILE_H;}
-  else if(dir==='right'){h=!isD;py=isD?y-(TILE_H-TILE_W)/2:y;}
-  return{...t,x:px,y:py,horizontal:h};}
+function placeTileLeft(t, x, y, dir, isD) {
+  let h = true, px = x, py = y;
+  if (dir === 'left')      { h = !isD; px = isD ? x - TILE_W : x - TILE_H; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
+  else if (dir === 'up')   { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; py = isD ? y - TILE_W : y - TILE_H; }
+  else if (dir === 'right'){ h = !isD; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
+  else if (dir === 'down') { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; }
+  return { ...t, x: px, y: py, horizontal: h };
+}
 
 /*═══════════════════════════════════════════════════════════════
   SVG TILE — Fully rewritten with correct pip geometry
@@ -1758,6 +1905,16 @@ function cleanupListeners(){cleanupGameListeners();if(unsubRooms){unsubRooms();u
 document.getElementById('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter')handleLogin();});
 document.getElementById('regPassword').addEventListener('keydown',e=>{if(e.key==='Enter')handleRegister();});
 document.addEventListener('dblclick',e=>e.preventDefault());
+
+/* Re-render board on resize/orientation change so auto-fit recalculates */
+let _resizeTimer = null;
+window.addEventListener('resize', function() {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(function() {
+    if (gameState && gameState.board && gameState.board.length > 0) renderBoard(gameState);
+  }, 200);
+});
+
 console.log('🎲 Dominó Venezolano Online v3.0 — Multijugador + Single Player con Bots IA');
 </script>
 </body>
