@@ -423,6 +423,44 @@ a { color: var(--accent); text-decoration: none; }
 .chat-input-area button { padding: 10px 16px; background: var(--accent); color: var(--bg-primary); border-radius: var(--radius-sm); font-weight: 700; font-size: 0.9rem; }
 
 /*──────────────────────────────────────────────
+  SINGLE PLAYER BANNER & SETUP
+──────────────────────────────────────────────*/
+.sp-banner {
+  background: linear-gradient(135deg, rgba(155,89,182,0.15), rgba(52,152,219,0.10));
+  border: 1px solid var(--purple); border-radius: var(--radius);
+  padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+  margin-bottom: 0; font-size: 0.82rem; color: var(--purple); font-weight: 600;
+}
+.sp-banner .sp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--purple); animation: pulse 2s infinite; flex-shrink: 0; }
+.sp-setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.sp-setup-grid .input-group { margin-bottom: 0; }
+.sp-difficulty-cards { display: flex; gap: 8px; margin-bottom: 16px; }
+.sp-diff-card {
+  flex: 1; padding: 12px 8px; border: 2px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-primary); cursor: pointer; text-align: center; transition: all var(--transition);
+}
+.sp-diff-card:hover { border-color: var(--text-muted); }
+.sp-diff-card.selected { border-color: var(--accent); background: rgba(240,192,64,0.06); }
+.sp-diff-card .sdc-icon { font-size: 1.3rem; }
+.sp-diff-card .sdc-name { font-weight: 700; font-size: 0.85rem; display: block; margin: 4px 0 2px; }
+.sp-diff-card.selected .sdc-name { color: var(--accent); }
+.sp-diff-card .sdc-desc { font-size: 0.7rem; color: var(--text-secondary); display: block; line-height: 1.3; }
+.sp-stats-bar {
+  display: flex; gap: 16px; justify-content: center; padding: 12px;
+  background: var(--bg-card); border-radius: var(--radius-sm); margin-bottom: 16px;
+}
+.sp-stat { text-align: center; }
+.sp-stat .stat-val { font-family: var(--font-display); font-size: 1.3rem; font-weight: 900; color: var(--accent); }
+.sp-stat .stat-label { font-size: 0.7rem; color: var(--text-secondary); }
+.bot-thinking {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 20px; font-size: 0.85rem; color: var(--text-secondary); z-index: 10;
+  display: none; animation: fadeIn 0.2s ease; pointer-events: none;
+}
+.bot-thinking.active { display: flex; align-items: center; gap: 8px; }
+
+/*──────────────────────────────────────────────
   RESPONSIVE
 ──────────────────────────────────────────────*/
 @media (max-width: 768px) {
@@ -494,6 +532,7 @@ a { color: var(--accent); text-decoration: none; }
   <div class="lobby-content">
     <div class="lobby-actions">
       <button class="btn btn-primary" onclick="showCreateRoom()">＋ Crear Sala</button>
+      <button class="btn btn-purple" onclick="showSinglePlayerSetup()">🤖 Jugar Solo</button>
       <button class="btn btn-secondary" onclick="refreshRooms()">⟳ Actualizar</button>
     </div>
     <div class="join-code-bar">
@@ -561,7 +600,10 @@ a { color: var(--accent); text-decoration: none; }
   <div class="opponent-area" id="oppTop"></div>
   <div style="display:flex; flex:1; overflow:hidden;">
     <div class="opponent-area" id="oppLeft" style="flex-direction:column; width:auto; padding:8px 4px;"></div>
-    <div class="board-wrapper" id="boardWrapper"><div class="board-container" id="boardContainer"></div></div>
+    <div class="board-wrapper" id="boardWrapper">
+      <div class="board-container" id="boardContainer"></div>
+      <div class="bot-thinking" id="botThinking"><div class="loader" style="width:18px;height:18px;border-width:2px;"></div> Bot pensando...</div>
+    </div>
     <div class="opponent-area" id="oppRight" style="flex-direction:column; width:auto; padding:8px 4px;"></div>
   </div>
   <div class="hand-area">
@@ -610,6 +652,8 @@ let currentUser = null, currentRoom = null, currentRoomId = null, gameState = nu
 let unsubRoom = null, unsubGame = null, unsubChat = null, unsubRooms = null;
 let selectedTile = null, currentLobbyTab = 'all', allPublicRooms = [];
 let pendingJoinCode = null, selectedRoomType = 'public';
+let isSinglePlayer = false, spDifficulty = 'medium', spBotSpeed = 1200, spBotTimer = null;
+let spStats = { played: 0, won: 0, lost: 0, dominoes: 0, trancadas: 0 };
 
 /*═══════════════════════════════════════════════════════════════
   UTILITIES
@@ -936,14 +980,21 @@ function enterGame() {
 ═══════════════════════════════════════════════════════════════*/
 function renderGame() {
   if (!gameState || !currentRoom) return;
-  const gs = gameState, myUid = currentUser.uid, mySeat = gs.seatMap[myUid];
+  const gs = gameState, myUid = currentUser ? currentUser.uid : 'player', mySeat = gs.seatMap[myUid];
   const isMyTurn = gs.currentTurn === myUid && gs.status === 'playing';
   document.getElementById('scoreA').textContent = gs.scores.A;
   document.getElementById('scoreB').textContent = gs.scores.B;
   const te = document.getElementById('turnIndicator');
   if (gs.status === 'finished') { te.textContent = gs.winner ? `¡Ganó Pareja ${gs.winner}!` : 'Mano terminada'; te.className = 'turn-indicator'; }
-  else if (isMyTurn) { te.textContent = '¡Tu turno!'; te.className = 'turn-indicator my-turn'; }
-  else { const tp = currentRoom.players.find(p => p.uid === gs.currentTurn); te.textContent = `Turno: ${tp?tp.name:'...'}`; te.className = 'turn-indicator'; }
+  else if (isMyTurn) {
+    te.textContent = isSinglePlayer ? '¡Tu turno! 🤖' : '¡Tu turno!';
+    te.className = 'turn-indicator my-turn';
+  } else {
+    const tp = currentRoom.players.find(p => p.uid === gs.currentTurn);
+    const botLabel = (isSinglePlayer && tp && tp.uid.startsWith('bot')) ? ' 🤖' : '';
+    te.textContent = `Turno: ${tp ? tp.name : '...'}${botLabel}`;
+    te.className = 'turn-indicator';
+  }
   renderOpponents(gs, mySeat); renderBoard(gs); renderHand(gs, isMyTurn);
   const pb = document.getElementById('passBtn');
   if (isMyTurn && gs.status === 'playing') { const h = gs.hands[myUid]||[]; pb.style.display = h.some(tid => canPlayTile(parseTile(tid),gs)) ? 'none' : 'inline-flex'; }
@@ -957,7 +1008,10 @@ function renderOpponents(gs, mySeat) {
     if (!player) { el.innerHTML = ''; return; }
     const tc = gs.hands[player.uid] ? gs.hands[player.uid].length : 0, it = gs.currentTurn === player.uid;
     const col = player.team === 'A' ? 'var(--accent)' : 'var(--blue)';
-    el.innerHTML = `<div class="opponent-info ${it?'current-turn':''}"><div class="opp-avatar" style="background:${col};color:var(--bg-primary)">${getUserInitials(player.name)}</div><div><div class="opp-name">${escapeHtml(player.name)}</div><div class="opp-tiles">${tc} fichas</div></div></div><div class="opponent-tiles">${Array(tc).fill('<div class="mini-tile"></div>').join('')}</div>`;
+    const isBot = isSinglePlayer && player.uid.startsWith('bot');
+    const botIcon = isBot ? '🤖' : getUserInitials(player.name);
+    const nameDisplay = escapeHtml(player.name) + (isBot && it ? ' 💭' : '');
+    el.innerHTML = `<div class="opponent-info ${it?'current-turn':''}"><div class="opp-avatar" style="background:${col};color:var(--bg-primary);font-size:${isBot?'0.85rem':'0.7rem'}">${botIcon}</div><div><div class="opp-name">${nameDisplay}</div><div class="opp-tiles">${tc} fichas</div></div></div><div class="opponent-tiles">${Array(tc).fill('<div class="mini-tile"></div>').join('')}</div>`;
   });
 }
 
@@ -1092,7 +1146,8 @@ function createTileSVG(a, b, horizontal, _, scale) {
   HAND & INTERACTION
 ═══════════════════════════════════════════════════════════════*/
 function renderHand(gs,imt){
-  const c=document.getElementById('handTiles'), mh=gs.hands[currentUser.uid]||[];
+  const myUid = currentUser ? currentUser.uid : 'player';
+  const c=document.getElementById('handTiles'), mh=gs.hands[myUid]||[];
   document.getElementById('handLabel').textContent=`Tus fichas (${mh.length})`;
   c.innerHTML=mh.map(tid=>{const t=parseTile(tid),pl=imt&&gs.status==='playing'&&canPlayTile(t,gs);
     return`<div class="hand-tile ${pl?'playable':''} ${selectedTile===tid?'selected':''}" onclick="${pl?`selectTile('${tid}')`:''}" data-tile="${tid}">${createTileSVG(t.a,t.b,true,true,1.4)}</div>`;}).join('');
@@ -1103,7 +1158,8 @@ function canPlayTile(t,gs){
   return t.a===gs.leftEnd||t.b===gs.leftEnd||t.a===gs.rightEnd||t.b===gs.rightEnd;
 }
 function selectTile(tid){
-  if(!gameState||gameState.currentTurn!==currentUser.uid)return;
+  const myUid = currentUser ? currentUser.uid : 'player';
+  if(!gameState||gameState.currentTurn!==myUid)return;
   const t=parseTile(tid),gs=gameState;
   if(gs.board.length===0){playTile(tid,'right');return;}
   const cl=t.a===gs.leftEnd||t.b===gs.leftEnd,cr=t.a===gs.rightEnd||t.b===gs.rightEnd;
@@ -1118,6 +1174,7 @@ function showSideChoice(tid){
 }
 
 async function playTile(tid,side){
+  if (isSinglePlayer) { spPlayTile(tid, side); return; }
   selectedTile=null;const gs=gameState;
   if(gs.currentTurn!==currentUser.uid||gs.status!=='playing')return;
   const t=parseTile(tid),mh=[...gs.hands[currentUser.uid]],ti=mh.indexOf(tid);if(ti===-1)return;mh.splice(ti,1);
@@ -1135,6 +1192,7 @@ async function playTile(tid,side){
 }
 
 async function passTurn(){
+  if (isSinglePlayer) { spPassTurn(); return; }
   const gs=gameState;if(gs.currentTurn!==currentUser.uid||gs.status!=='playing')return;
   const to=gs.turnOrder,mi=to.indexOf(currentUser.uid),np=to[(mi+1)%4],nc=gs.consecutivePasses+1;
   const u={currentTurn:np,consecutivePasses:nc,lastMove:{player:currentUser.uid,action:'pass',timestamp:Date.now()},updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
@@ -1165,9 +1223,23 @@ async function resolveHandEnd(reason,winnerId=null){
 
 function showGameOverModal(w,s){
   const ex=document.getElementById('gameOverModal');if(ex)ex.remove();
-  const mt=gameState.teamMap[currentUser.uid],iw=mt===w;
+  const myUid = currentUser ? currentUser.uid : 'player';
+  const mt=gameState.teamMap[myUid],iw=mt===w;
+  const spLabel = isSinglePlayer ? `<div style="margin-bottom:12px;"><span class="badge badge-purple">🤖 vs Bots — ${spDifficulty.charAt(0).toUpperCase()+spDifficulty.slice(1)}</span></div>` : '';
   const o=document.createElement('div');o.className='modal-overlay';o.id='gameOverModal';
-  o.innerHTML=`<div class="modal" style="text-align:center;"><h3 style="font-size:1.8rem;margin-bottom:8px;">${iw?'🎉 ¡Ganaste!':'😔 Perdiste'}</h3><p style="color:var(--text-secondary);margin-bottom:20px;">Pareja ${w} gana la partida</p><div style="display:flex;justify-content:center;gap:30px;margin-bottom:24px;"><div><div style="font-size:2rem;font-weight:900;color:var(--accent);">${s.A}</div><div style="font-size:0.85rem;color:var(--text-secondary);">Pareja A</div></div><div><div style="font-size:2rem;font-weight:900;color:var(--blue);">${s.B}</div><div style="font-size:0.85rem;color:var(--text-secondary);">Pareja B</div></div></div><button class="btn btn-primary btn-block" onclick="document.getElementById('gameOverModal').remove();backToLobby();">Volver al Lobby</button></div>`;
+  o.innerHTML=`<div class="modal" style="text-align:center;">
+    <h3 style="font-size:1.8rem;margin-bottom:8px;">${iw?'🎉 ¡Ganaste!':'😔 Perdiste'}</h3>
+    ${spLabel}
+    <p style="color:var(--text-secondary);margin-bottom:20px;">Pareja ${w} gana la partida</p>
+    <div style="display:flex;justify-content:center;gap:30px;margin-bottom:24px;">
+      <div><div style="font-size:2rem;font-weight:900;color:var(--accent);">${s.A}</div><div style="font-size:0.85rem;color:var(--text-secondary);">Pareja A</div></div>
+      <div><div style="font-size:2rem;font-weight:900;color:var(--blue);">${s.B}</div><div style="font-size:0.85rem;color:var(--text-secondary);">Pareja B</div></div>
+    </div>
+    ${isSinglePlayer ? `<div style="display:flex;gap:10px;">
+      <button class="btn btn-purple btn-block" style="flex:1" onclick="document.getElementById('gameOverModal').remove();spStartNewHand(true);">🔄 Revancha</button>
+      <button class="btn btn-secondary btn-block" style="flex:1" onclick="document.getElementById('gameOverModal').remove();backToLobby();">Salir</button>
+    </div>` : `<button class="btn btn-primary btn-block" onclick="document.getElementById('gameOverModal').remove();backToLobby();">Volver al Lobby</button>`}
+  </div>`;
   document.body.appendChild(o);
 }
 
@@ -1191,9 +1263,482 @@ async function sendChatMessage(){
 }
 
 /*═══════════════════════════════════════════════════════════════
+  SINGLE PLAYER — Setup, Engine, Bot AI
+═══════════════════════════════════════════════════════════════*/
+const BOT_NAMES = ['Carlos Bot','María Bot','José Bot','Ana Bot','Pedro Bot','Luisa Bot'];
+let spSelectedDiff = 'medium';
+
+function loadSpStats() {
+  try { const s = JSON.parse(localStorage.getItem('dominoSpStats')); if (s) spStats = s; } catch(e) {}
+}
+function saveSpStats() {
+  try { localStorage.setItem('dominoSpStats', JSON.stringify(spStats)); } catch(e) {}
+}
+loadSpStats();
+
+function showSinglePlayerSetup() {
+  const wr = spStats.played > 0 ? ((spStats.won/spStats.played)*100).toFixed(0) : 0;
+  spSelectedDiff = 'medium';
+  const o = document.createElement('div'); o.className = 'modal-overlay'; o.id = 'spSetupModal';
+  o.innerHTML = `<div class="modal">
+    <h3>🤖 Partida contra Bots</h3>
+    <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:18px;">Practica contra 3 bots inteligentes. Mismas reglas del dominó venezolano.</p>
+    ${spStats.played > 0 ? `<div class="sp-stats-bar">
+      <div class="sp-stat"><div class="stat-val">${spStats.played}</div><div class="stat-label">Partidas</div></div>
+      <div class="sp-stat"><div class="stat-val">${spStats.won}</div><div class="stat-label">Ganadas</div></div>
+      <div class="sp-stat"><div class="stat-val">${wr}%</div><div class="stat-label">Win Rate</div></div>
+      <div class="sp-stat"><div class="stat-val">${spStats.dominoes}</div><div class="stat-label">Dominós</div></div>
+    </div>` : ''}
+    <div class="input-group"><label>Dificultad de los Bots</label></div>
+    <div class="sp-difficulty-cards">
+      <div class="sp-diff-card" id="spDiffEasy" onclick="pickSpDiff('easy')">
+        <div class="sdc-icon">😊</div><span class="sdc-name">Fácil</span>
+        <span class="sdc-desc">Jugadas aleatorias</span>
+      </div>
+      <div class="sp-diff-card selected" id="spDiffMedium" onclick="pickSpDiff('medium')">
+        <div class="sdc-icon">🧠</div><span class="sdc-name">Medio</span>
+        <span class="sdc-desc">Estrategia básica</span>
+      </div>
+      <div class="sp-diff-card" id="spDiffHard" onclick="pickSpDiff('hard')">
+        <div class="sdc-icon">🔥</div><span class="sdc-name">Difícil</span>
+        <span class="sdc-desc">Conteo y bloqueo</span>
+      </div>
+    </div>
+    <div class="sp-setup-grid">
+      <div class="input-group"><label>Puntos para ganar</label>
+        <select id="spTargetScore"><option value="75">75 puntos</option><option value="100" selected>100 puntos</option></select>
+      </div>
+      <div class="input-group"><label>Velocidad de bots</label>
+        <select id="spBotSpeedSel"><option value="600">Rápida</option><option value="1200" selected>Normal</option><option value="2200">Lenta</option></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-purple btn-block" style="flex:2" onclick="startSinglePlayer()">🎲 Iniciar Partida</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('spSetupModal').remove()">Cancelar</button>
+    </div>
+    ${spStats.played > 0 ? `<button class="btn btn-small btn-secondary" style="margin-top:12px;width:100%;font-size:0.78rem;" onclick="spStats={played:0,won:0,lost:0,dominoes:0,trancadas:0};saveSpStats();document.getElementById('spSetupModal').remove();showSinglePlayerSetup();">Reiniciar estadísticas</button>` : ''}
+  </div>`;
+  document.body.appendChild(o);
+}
+
+function pickSpDiff(d) {
+  spSelectedDiff = d;
+  document.querySelectorAll('.sp-diff-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('spDiff' + d.charAt(0).toUpperCase() + d.slice(1)).classList.add('selected');
+}
+
+function startSinglePlayer() {
+  const target = parseInt(document.getElementById('spTargetScore').value) || 100;
+  spBotSpeed = parseInt(document.getElementById('spBotSpeedSel').value) || 1200;
+  spDifficulty = spSelectedDiff;
+  const modal = document.getElementById('spSetupModal');
+  if (modal) modal.remove();
+
+  isSinglePlayer = true;
+  const myUid = currentUser ? currentUser.uid : 'player';
+  const myName = currentUser ? currentUser.name : 'Jugador';
+  const bots = shuffle([...BOT_NAMES]).slice(0, 3);
+
+  currentRoom = {
+    id: 'sp-local', name: 'Práctica vs Bots', type: 'singleplayer',
+    hostUid: myUid, targetScore: target, status: 'playing',
+    players: [
+      { uid: myUid, name: myName, team: 'A', seat: 0 },
+      { uid: 'bot1', name: bots[0], team: 'B', seat: 1 },
+      { uid: 'bot2', name: bots[1], team: 'A', seat: 2 },
+      { uid: 'bot3', name: bots[2], team: 'B', seat: 3 }
+    ]
+  };
+  currentRoomId = 'sp-local';
+  spStartNewHand(true);
+  showScreen('gameScreen');
+}
+
+function spStartNewHand(isFirstHand) {
+  const room = currentRoom;
+  const tiles = shuffle(generateTiles());
+  const hands = {};
+  const pbs = [...room.players].sort((a, b) => a.seat - b.seat);
+  pbs.forEach((p, i) => { hands[p.uid] = tiles.slice(i * 7, (i + 1) * 7).map(t => t.id); });
+
+  let starter = null;
+  for (const p of pbs) { if (hands[p.uid].includes('6-6')) { starter = p.uid; break; } }
+  if (!starter) starter = pbs[0].uid;
+
+  const prevScores = (!isFirstHand && gameState) ? gameState.scores : { A: 0, B: 0 };
+  const prevHand = (!isFirstHand && gameState) ? (gameState.handNumber || 0) : 0;
+
+  gameState = {
+    roomId: 'sp-local', status: 'playing', hands: hands, board: [], leftEnd: null, rightEnd: null,
+    currentTurn: starter, turnOrder: pbs.map(p => p.uid),
+    seatMap: {}, teamMap: {}, scores: prevScores,
+    targetScore: room.targetScore || 100, consecutivePasses: 0,
+    handNumber: prevHand + 1, lastMove: null, winner: null,
+    playedTiles: []  /* track all played tiles for bot AI */
+  };
+  pbs.forEach(p => { gameState.seatMap[p.uid] = p.seat; gameState.teamMap[p.uid] = p.team; });
+
+  renderGame();
+  spScheduleBotTurn();
+}
+
+/* Schedule a bot turn if it's a bot's turn */
+function spScheduleBotTurn() {
+  if (!isSinglePlayer || !gameState || gameState.status !== 'playing') return;
+  const uid = gameState.currentTurn;
+  if (!uid || !uid.startsWith('bot')) return;
+  const delay = spBotSpeed + Math.floor(Math.random() * 400) - 200;
+  document.getElementById('botThinking').classList.add('active');
+  if (spBotTimer) clearTimeout(spBotTimer);
+  spBotTimer = setTimeout(() => {
+    document.getElementById('botThinking').classList.remove('active');
+    spExecuteBotTurn(uid);
+  }, Math.max(300, delay));
+}
+
+/* Execute a single bot turn */
+function spExecuteBotTurn(botUid) {
+  if (!gameState || gameState.status !== 'playing' || gameState.currentTurn !== botUid) return;
+  const gs = gameState;
+  const hand = gs.hands[botUid] || [];
+  const playable = [];
+
+  for (const tid of hand) {
+    const t = parseTile(tid);
+    if (gs.board.length === 0) {
+      if ((gs.handNumber === 1 && t.a === 6 && t.b === 6) || gs.handNumber > 1) {
+        playable.push({ tid, tile: t, side: 'right' });
+      }
+    } else {
+      if (t.a === gs.leftEnd || t.b === gs.leftEnd) playable.push({ tid, tile: t, side: 'left' });
+      if (t.a === gs.rightEnd || t.b === gs.rightEnd) {
+        if (!(t.a === gs.leftEnd || t.b === gs.leftEnd) || gs.leftEnd === gs.rightEnd) {
+          playable.push({ tid, tile: t, side: 'right' });
+        } else {
+          playable.push({ tid, tile: t, side: 'right' });
+        }
+      }
+    }
+  }
+
+  /* Remove duplicates (same tile played on both sides) — keep both as options */
+  if (playable.length === 0) {
+    spBotPass(botUid);
+    return;
+  }
+
+  /* Choose move based on difficulty */
+  const chosen = botChooseMove(playable, botUid, gs);
+  spBotPlayTile(botUid, chosen.tid, chosen.side);
+}
+
+/*═══════════════════════════════════════════════════════════════
+  BOT AI — Decision Engine with 3 difficulty levels
+═══════════════════════════════════════════════════════════════*/
+function botChooseMove(moves, botUid, gs) {
+  if (spDifficulty === 'easy') return botEasyMove(moves);
+  if (spDifficulty === 'medium') return botMediumMove(moves, botUid, gs);
+  return botHardMove(moves, botUid, gs);
+}
+
+/* EASY: Random move */
+function botEasyMove(moves) {
+  return moves[Math.floor(Math.random() * moves.length)];
+}
+
+/* MEDIUM: Prefer doubles, high-value tiles, number control */
+function botMediumMove(moves, botUid, gs) {
+  const scored = moves.map(m => {
+    let score = 0;
+    const t = m.tile;
+    /* Prefer playing doubles early to avoid being stuck with them */
+    if (t.a === t.b) score += 15;
+    /* Prefer high-value tiles to get rid of points */
+    score += (t.a + t.b) * 2;
+    /* Prefer tiles that keep both ends diverse */
+    const newEnd = getNewEnd(m, gs);
+    const hand = gs.hands[botUid].filter(id => id !== m.tid);
+    const matchCount = hand.filter(id => { const p = parseTile(id); return p.a === newEnd || p.b === newEnd; }).length;
+    score += matchCount * 8;
+    return { ...m, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  /* Small randomization to avoid being too predictable */
+  if (scored.length > 1 && Math.random() < 0.2) return scored[1];
+  return scored[0];
+}
+
+/* HARD: Full heuristic evaluation with blocking, partner support, tile counting */
+function botHardMove(moves, botUid, gs) {
+  const myTeam = gs.teamMap[botUid];
+  const partnerUid = Object.keys(gs.teamMap).find(u => gs.teamMap[u] === myTeam && u !== botUid);
+  const opponents = Object.keys(gs.teamMap).filter(u => gs.teamMap[u] !== myTeam);
+  const allPlayed = gs.playedTiles || [];
+
+  /* Count how many of each number (0-6) have been played */
+  const numCounts = Array(7).fill(0);
+  allPlayed.forEach(tid => { const t = parseTile(tid); numCounts[t.a]++; numCounts[t.b]++; });
+  /* Also count numbers in our hand */
+  const myNumCounts = Array(7).fill(0);
+  gs.hands[botUid].forEach(tid => { const t = parseTile(tid); myNumCounts[t.a]++; myNumCounts[t.b]++; });
+
+  const scored = moves.map(m => {
+    let score = 0;
+    const t = m.tile;
+    const newEnd = getNewEnd(m, gs);
+
+    /* 1. Get rid of doubles first (high priority) */
+    if (t.a === t.b) score += 20;
+
+    /* 2. Prefer high-value tiles to minimize points if hand ends */
+    score += (t.a + t.b) * 1.5;
+
+    /* 3. Number control: prefer placing ends we have many of */
+    const hand = gs.hands[botUid].filter(id => id !== m.tid);
+    const myMatchesOnNewEnd = hand.filter(id => {
+      const p = parseTile(id); return p.a === newEnd || p.b === newEnd;
+    }).length;
+    score += myMatchesOnNewEnd * 12;
+
+    /* 4. Blocking: prefer ends where opponents likely can't play */
+    /* If a number has appeared many times, opponents less likely to have it */
+    const totalAppearances = numCounts[newEnd] + myNumCounts[newEnd];
+    if (totalAppearances >= 5) score += 10; /* Number is almost exhausted */
+    if (totalAppearances >= 6) score += 15;
+
+    /* 5. Partner support: if partner passed on a number, avoid placing it */
+    /* Check if partner's last move was a pass */
+    if (gs.lastMove && gs.lastMove.action === 'pass' && gs.lastMove.player === partnerUid) {
+      /* Partner passed — they might not have this end number */
+    }
+
+    /* 6. Opponent analysis: if opponent has few tiles, try to block */
+    opponents.forEach(opp => {
+      const oppHandSize = (gs.hands[opp] || []).length;
+      if (oppHandSize <= 2) {
+        /* Opponent close to winning — play defensively, prefer rare numbers */
+        if (totalAppearances >= 5) score += 8;
+      }
+    });
+
+    /* 7. Keep variety — don't put both ends as same number unless strategic */
+    const otherEnd = m.side === 'left' ? gs.rightEnd : gs.leftEnd;
+    if (gs.board.length > 0 && newEnd === otherEnd) score -= 5;
+
+    /* 8. Prefer moves where we maintain future options */
+    const uniqueNums = new Set();
+    hand.forEach(id => { const p = parseTile(id); uniqueNums.add(p.a); uniqueNums.add(p.b); });
+    if (uniqueNums.has(newEnd)) score += 5;
+
+    return { ...m, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0];
+}
+
+/* Helper: what end value results from playing a move */
+function getNewEnd(move, gs) {
+  const t = move.tile;
+  if (gs.board.length === 0) return move.side === 'left' ? t.a : t.b;
+  if (move.side === 'left') {
+    return (t.b === gs.leftEnd) ? t.a : t.b;
+  } else {
+    return (t.a === gs.rightEnd) ? t.b : t.a;
+  }
+}
+
+/*═══════════════════════════════════════════════════════════════
+  SINGLE PLAYER — Move execution (local state, no Firebase)
+═══════════════════════════════════════════════════════════════*/
+function spBotPlayTile(botUid, tid, side) {
+  const gs = gameState;
+  const t = parseTile(tid);
+  const hand = [...gs.hands[botUid]];
+  const idx = hand.indexOf(tid);
+  if (idx === -1) return;
+  hand.splice(idx, 1);
+
+  let pa = t.a, pb = t.b;
+  if (gs.board.length === 0) { /* first tile */ }
+  else if (side === 'left') { if (t.b === gs.leftEnd) { pa = t.a; pb = t.b; } else { pa = t.b; pb = t.a; } }
+  else { if (t.a === gs.rightEnd) { pa = t.a; pb = t.b; } else { pa = t.b; pb = t.a; } }
+
+  const be = { a: pa, b: pb, side, playedBy: botUid };
+  let nl = gs.leftEnd, nr = gs.rightEnd;
+  if (gs.board.length === 0) { nl = pa; nr = pb; }
+  else if (side === 'left') { nl = (pb === gs.leftEnd) ? pa : pb; }
+  else { nr = (pa === gs.rightEnd) ? pb : pa; }
+
+  const to = gs.turnOrder;
+  const mi = to.indexOf(botUid);
+  const np = to[(mi + 1) % 4];
+
+  gs.board.push(be);
+  gs.leftEnd = nl;
+  gs.rightEnd = nr;
+  gs.hands[botUid] = hand;
+  gs.currentTurn = np;
+  gs.consecutivePasses = 0;
+  gs.lastMove = { player: botUid, tile: tid, side, timestamp: Date.now() };
+  if (!gs.playedTiles) gs.playedTiles = [];
+  gs.playedTiles.push(tid);
+
+  if (hand.length === 0) {
+    gs.status = 'hand_won';
+    gs.handWinner = botUid;
+    renderGame();
+    setTimeout(() => spResolveHandEnd('domino', botUid), 800);
+    return;
+  }
+
+  renderGame();
+  spScheduleBotTurn();
+}
+
+function spBotPass(botUid) {
+  const gs = gameState;
+  const to = gs.turnOrder;
+  const mi = to.indexOf(botUid);
+  const np = to[(mi + 1) % 4];
+  gs.consecutivePasses++;
+  gs.currentTurn = np;
+  gs.lastMove = { player: botUid, action: 'pass', timestamp: Date.now() };
+
+  if (gs.consecutivePasses >= 4) {
+    gs.status = 'trancado';
+    renderGame();
+    setTimeout(() => spResolveHandEnd('trancado'), 800);
+    return;
+  }
+  renderGame();
+  spScheduleBotTurn();
+}
+
+/* Single-player versions of playTile and passTurn */
+function spPlayTile(tid, side) {
+  selectedTile = null;
+  const gs = gameState;
+  const myUid = currentUser ? currentUser.uid : 'player';
+  if (gs.currentTurn !== myUid || gs.status !== 'playing') return;
+
+  const t = parseTile(tid);
+  const mh = [...gs.hands[myUid]];
+  const ti = mh.indexOf(tid);
+  if (ti === -1) return;
+  mh.splice(ti, 1);
+
+  let pa = t.a, pb = t.b;
+  if (gs.board.length === 0) { }
+  else if (side === 'left') { if (t.b === gs.leftEnd) { pa = t.a; pb = t.b; } else { pa = t.b; pb = t.a; } }
+  else { if (t.a === gs.rightEnd) { pa = t.a; pb = t.b; } else { pa = t.b; pb = t.a; } }
+
+  const be = { a: pa, b: pb, side, playedBy: myUid };
+  let nl = gs.leftEnd, nr = gs.rightEnd;
+  if (gs.board.length === 0) { nl = pa; nr = pb; }
+  else if (side === 'left') { nl = (pb === gs.leftEnd) ? pa : pb; }
+  else { nr = (pa === gs.rightEnd) ? pb : pa; }
+
+  const to = gs.turnOrder;
+  const mi = to.indexOf(myUid);
+  const np = to[(mi + 1) % 4];
+
+  gs.board.push(be);
+  gs.leftEnd = nl;
+  gs.rightEnd = nr;
+  gs.hands[myUid] = mh;
+  gs.currentTurn = np;
+  gs.consecutivePasses = 0;
+  gs.lastMove = { player: myUid, tile: tid, side, timestamp: Date.now() };
+  if (!gs.playedTiles) gs.playedTiles = [];
+  gs.playedTiles.push(tid);
+
+  if (mh.length === 0) {
+    gs.status = 'hand_won';
+    gs.handWinner = myUid;
+    renderGame();
+    setTimeout(() => spResolveHandEnd('domino', myUid), 800);
+    return;
+  }
+
+  renderGame();
+  spScheduleBotTurn();
+}
+
+function spPassTurn() {
+  const gs = gameState;
+  const myUid = currentUser ? currentUser.uid : 'player';
+  if (gs.currentTurn !== myUid || gs.status !== 'playing') return;
+
+  const to = gs.turnOrder;
+  const mi = to.indexOf(myUid);
+  gs.currentTurn = to[(mi + 1) % 4];
+  gs.consecutivePasses++;
+  gs.lastMove = { player: myUid, action: 'pass', timestamp: Date.now() };
+
+  if (gs.consecutivePasses >= 4) {
+    gs.status = 'trancado';
+    renderGame();
+    setTimeout(() => spResolveHandEnd('trancado'), 800);
+    return;
+  }
+  renderGame();
+  spScheduleBotTurn();
+}
+
+/* Resolve end of a hand in single-player */
+function spResolveHandEnd(reason, winnerId) {
+  const gs = gameState;
+  let pA = 0, pB = 0;
+
+  if (reason === 'domino') {
+    spStats.dominoes++;
+    const wt = gs.teamMap[winnerId];
+    for (const uid of Object.keys(gs.hands)) {
+      if (gs.teamMap[uid] !== wt) {
+        const hp = gs.hands[uid].reduce((s, tid) => { const t = parseTile(tid); return s + t.a + t.b; }, 0);
+        if (wt === 'A') pA += hp; else pB += hp;
+      }
+    }
+  } else {
+    spStats.trancadas++;
+    let tA = 0, tB = 0;
+    for (const uid of Object.keys(gs.hands)) {
+      const hp = gs.hands[uid].reduce((s, tid) => { const t = parseTile(tid); return s + t.a + t.b; }, 0);
+      if (gs.teamMap[uid] === 'A') tA += hp; else tB += hp;
+    }
+    if (tA < tB) pA = tB; else if (tB < tA) pB = tA;
+  }
+
+  gs.scores.A += pA;
+  gs.scores.B += pB;
+
+  let gw = null;
+  if (gs.scores.A >= gs.targetScore) gw = 'A';
+  else if (gs.scores.B >= gs.targetScore) gw = 'B';
+
+  if (gw) {
+    gs.status = 'finished';
+    gs.winner = gw;
+    spStats.played++;
+    const myTeam = gs.teamMap[currentUser ? currentUser.uid : 'player'];
+    if (myTeam === gw) spStats.won++; else spStats.lost++;
+    saveSpStats();
+    renderGame();
+    showGameOverModal(gw, gs.scores);
+  } else {
+    const rt = reason === 'domino' ? '¡Dominó!' : '¡Trancado!';
+    showToast(`${rt} — A:${gs.scores.A} | B:${gs.scores.B}`, 'info');
+    renderGame();
+    setTimeout(() => spStartNewHand(false), 2500);
+  }
+}
+
+/*═══════════════════════════════════════════════════════════════
   NAVIGATION & CLEANUP
 ═══════════════════════════════════════════════════════════════*/
 async function leaveRoom(){
+  if (isSinglePlayer) { backToLobby(); return; }
   if(!currentRoomId){backToLobby();return;}
   try{const ref=db.collection('rooms').doc(currentRoomId),snap=await ref.get();
     if(snap.exists){const d=snap.data(),up=d.players.filter(p=>p.uid!==currentUser.uid);
@@ -1201,14 +1746,19 @@ async function leaveRoom(){
       else{const u={players:up};if(d.hostUid===currentUser.uid)u.hostUid=up[0].uid;await ref.update(u);}}}
   catch(e){console.error('Leave error:',e);}backToLobby();
 }
-function backToLobby(){cleanupGameListeners();currentRoomId=null;currentRoom=null;gameState=null;selectedTile=null;showScreen('lobbyScreen');}
+function backToLobby(){
+  if (spBotTimer) { clearTimeout(spBotTimer); spBotTimer = null; }
+  isSinglePlayer = false;
+  document.getElementById('botThinking').classList.remove('active');
+  cleanupGameListeners();currentRoomId=null;currentRoom=null;gameState=null;selectedTile=null;showScreen('lobbyScreen');
+}
 function cleanupGameListeners(){if(unsubRoom){unsubRoom();unsubRoom=null;}if(unsubGame){unsubGame();unsubGame=null;}if(unsubChat){unsubChat();unsubChat=null;}}
 function cleanupListeners(){cleanupGameListeners();if(unsubRooms){unsubRooms();unsubRooms=null;}}
 
 document.getElementById('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter')handleLogin();});
 document.getElementById('regPassword').addEventListener('keydown',e=>{if(e.key==='Enter')handleRegister();});
 document.addEventListener('dblclick',e=>e.preventDefault());
-console.log('🎲 Dominó Venezolano Online v2.0 — Salas Públicas y Privadas');
+console.log('🎲 Dominó Venezolano Online v3.0 — Multijugador + Single Player con Bots IA');
 </script>
 </body>
 </html>
