@@ -392,9 +392,35 @@ a { color: var(--accent); text-decoration: none; }
 .board-container {
   position: absolute;
   transform-origin: 0 0;
-  /* width/height/transform set dynamically by renderBoard() */
 }
 .board-tile { position: absolute; }
+
+/* Tap-to-place endpoint zones */
+.board-endpoint {
+  position: absolute; border-radius: 8px; cursor: pointer; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.board-endpoint .ep-zone {
+  width: 100%; height: 100%; border-radius: 8px;
+  border: 2.5px dashed var(--accent); background: rgba(240,192,64,0.12);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 800; color: var(--accent); letter-spacing: 0.5px;
+  animation: epPulse 1.2s ease-in-out infinite;
+}
+.board-endpoint:active { transform: scale(0.93); }
+@keyframes epPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240,192,64,0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(240,192,64,0); }
+}
+.hand-tile.awaiting-placement {
+  transform: translateY(-8px); box-shadow: 0 4px 16px var(--tile-glow);
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+}
+.selection-hint {
+  text-align: center; font-size: 0.78rem; color: var(--accent); font-weight: 600;
+  padding: 4px 0; animation: fadeIn 0.2s ease;
+}
 
 .hand-area { background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 10px 8px; flex-shrink: 0; }
 .hand-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; padding: 0 4px; }
@@ -1043,20 +1069,18 @@ function renderOpponents(gs, mySeat) {
   });
 }
 
-const TILE_W=30, TILE_H=60, TILE_GAP=2;
+const TILE_W = 30, TILE_H = 60, GAP = 4;
 
 /*═══════════════════════════════════════════════════════════════
-  renderBoard — Auto-fit: scales all tiles to always fit on screen
+  renderBoard — Auto-fit + endpoint tap zones
 ═══════════════════════════════════════════════════════════════*/
 function renderBoard(gs) {
   const container = document.getElementById('boardContainer');
   const wrapper   = document.getElementById('boardWrapper');
   container.innerHTML = '';
   container.style.transform = '';
-  container.style.width  = '';
-  container.style.height = '';
-  container.style.left = '';
-  container.style.top  = '';
+  container.style.width = ''; container.style.height = '';
+  container.style.left = '';  container.style.top = '';
 
   if (!gs.board || gs.board.length === 0) {
     container.style.width = '100%'; container.style.height = '100%';
@@ -1065,31 +1089,24 @@ function renderBoard(gs) {
     return;
   }
 
-  /* Get available viewport for the board */
   const wrapW = wrapper.clientWidth;
   const wrapH = wrapper.clientHeight;
+  const turnDist = Math.max(180, Math.min(wrapW, wrapH) * 0.9);
+  const layout = calculateBoardLayout(gs.board, turnDist);
 
-  /* Calculate layout with adaptive turn distances based on viewport */
-  const maxSpreadX = Math.max(280, wrapW * 1.8);
-  const maxSpreadY = Math.max(180, wrapH * 1.4);
-  const layout = calculateBoardLayout(gs.board, maxSpreadX, maxSpreadY);
-
-  /* Compute bounding box of all placed tiles */
+  /* Bounding box */
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   layout.forEach(it => {
     const w = it.horizontal ? TILE_H : TILE_W;
     const h = it.horizontal ? TILE_W : TILE_H;
-    minX = Math.min(minX, it.x);
-    minY = Math.min(minY, it.y);
-    maxX = Math.max(maxX, it.x + w);
-    maxY = Math.max(maxY, it.y + h);
+    minX = Math.min(minX, it.x); minY = Math.min(minY, it.y);
+    maxX = Math.max(maxX, it.x + w); maxY = Math.max(maxY, it.y + h);
   });
 
-  const PAD = 12;
+  const PAD = 20;
   const boardW = (maxX - minX) + PAD * 2;
   const boardH = (maxY - minY) + PAD * 2;
 
-  /* Set container to exact board size */
   container.style.width  = boardW + 'px';
   container.style.height = boardH + 'px';
   container.style.position = 'absolute';
@@ -1104,110 +1121,198 @@ function renderBoard(gs) {
     container.appendChild(d);
   });
 
-  /* Auto-scale: compute scale so entire board fits in wrapper with margin */
-  const marginX = 8, marginY = 8;
-  const availW = Math.max(100, wrapW - marginX * 2);
-  const availH = Math.max(100, wrapH - marginY * 2);
-  const scaleX = availW / boardW;
-  const scaleY = availH / boardH;
-  const scale  = Math.min(scaleX, scaleY, 1.5); /* never zoom in more than 1.5× */
+  /* Endpoint tap zones when a tile is selected */
+  if (selectedTile && gs.status === 'playing') {
+    const tile = parseTile(selectedTile);
+    const canL = tile.a === gs.leftEnd || tile.b === gs.leftEnd;
+    const canR = tile.a === gs.rightEnd || tile.b === gs.rightEnd;
+    const epSize = 44;
 
-  /* Apply transform and center */
+    if (canL && layout._leftEndpoint) {
+      const ep = layout._leftEndpoint;
+      const d = document.createElement('div');
+      d.className = 'board-endpoint';
+      d.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
+      d.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
+      d.style.width = epSize + 'px'; d.style.height = epSize + 'px';
+      d.innerHTML = '<div class="ep-zone">◀</div>';
+      d.onclick = function() { playTile(selectedTile, 'left'); };
+      container.appendChild(d);
+    }
+    if (canR && layout._rightEndpoint) {
+      const ep = layout._rightEndpoint;
+      const d = document.createElement('div');
+      d.className = 'board-endpoint';
+      d.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
+      d.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
+      d.style.width = epSize + 'px'; d.style.height = epSize + 'px';
+      d.innerHTML = '<div class="ep-zone">▶</div>';
+      d.onclick = function() { playTile(selectedTile, 'right'); };
+      container.appendChild(d);
+    }
+  }
+
+  /* Auto-scale to fit */
+  const availW = Math.max(80, wrapW - 12);
+  const availH = Math.max(80, wrapH - 12);
+  const scale  = Math.min(availW / boardW, availH / boardH, 1.6);
   const scaledW = boardW * scale;
   const scaledH = boardH * scale;
-  const offsetX = (wrapW - scaledW) / 2;
-  const offsetY = (wrapH - scaledH) / 2;
 
   container.style.transformOrigin = '0 0';
   container.style.transform = 'scale(' + scale.toFixed(4) + ')';
-  container.style.left = offsetX + 'px';
-  container.style.top  = offsetY + 'px';
+  container.style.left = ((wrapW - scaledW) / 2) + 'px';
+  container.style.top  = ((wrapH - scaledH) / 2) + 'px';
 }
 
 /*═══════════════════════════════════════════════════════════════
-  calculateBoardLayout — Adaptive turn thresholds
+  calculateBoardLayout — Rewritten with proper cursor tracking
   
-  maxSpreadX/Y control when the chain turns to keep the board
-  from growing infinitely in one direction.
+  Each chain tracks a "cursor" — the exact point where the next
+  tile's connecting edge should be placed — and a direction.
+  
+  Tile orientations by chain direction:
+    Horizontal chain (right/left): normal tiles horizontal (60×30),
+      doubles perpendicular vertical (30×60)
+    Vertical chain (down/up): normal tiles vertical (30×60),
+      doubles perpendicular horizontal (60×30)
 ═══════════════════════════════════════════════════════════════*/
-function calculateBoardLayout(board, maxSpreadX, maxSpreadY) {
+function calculateBoardLayout(board, turnDist) {
   if (!board || board.length === 0) return [];
-
-  if (!maxSpreadX) maxSpreadX = 600;
-  if (!maxSpreadY) maxSpreadY = 400;
-  const turnX = maxSpreadX / 2;
-  const turnY = maxSpreadY / 2;
+  if (!turnDist) turnDist = 200;
 
   const layout = [];
-  const cx = 400, cy = 300;
+  const CX = 500, CY = 400; /* arbitrary origin — gets normalized in renderBoard */
 
-  /* First tile */
-  const f = board[0], isD = f.a === f.b;
-  layout.push({ ...f, x: cx, y: cy, horizontal: !isD });
+  /* === First tile (often cochina / double-six) === */
+  const f = board[0];
+  const fIsD = f.a === f.b;
 
-  let lx = cx, ly = cy, ld = 'left';
-  let rx = cx, ry = cy, rd = 'right';
-  if (!isD) rx = cx + TILE_H + TILE_GAP;
-  else      rx = cx + TILE_W + TILE_GAP;
+  if (fIsD) {
+    /* Double: placed vertically (30×60), chain expands horizontally from center */
+    layout.push({ ...f, x: CX - TILE_W/2, y: CY - TILE_H/2, horizontal: false });
+    /* Right chain cursor: right edge center of the double */
+    var rCursor = { x: CX + TILE_W/2 + GAP, y: CY };
+    /* Left chain cursor: left edge center of the double */
+    var lCursor = { x: CX - TILE_W/2 - GAP, y: CY };
+  } else {
+    /* Normal: placed horizontally (60×30) */
+    layout.push({ ...f, x: CX - TILE_H/2, y: CY - TILE_W/2, horizontal: true });
+    var rCursor = { x: CX + TILE_H/2 + GAP, y: CY };
+    var lCursor = { x: CX - TILE_H/2 - GAP, y: CY };
+  }
 
-  let ltc = 0, rtc = 0;
+  var rDir = 'right', lDir = 'left';
+  var rTurns = 0, lTurns = 0;
+  /* Track distance from origin in current direction to know when to turn */
+  var rDistFromTurn = 0, lDistFromTurn = 0;
 
-  for (let i = 1; i < board.length; i++) {
-    const t = board[i], s = t.side, db = t.a === t.b;
+  for (var i = 1; i < board.length; i++) {
+    var t = board[i], side = t.side, isD = t.a === t.b;
 
-    if (s === 'right') {
-      const it = placeTile(t, rx, ry, rd, db);
-      layout.push(it);
-
-      if (rd === 'right') {
-        rx = it.x + (db ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
-        if (rx > cx + turnX && rtc === 0) { rd = 'down'; rtc++; }
-      } else if (rd === 'down') {
-        ry = it.y + (db ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 8);
-        if (ry > cy + turnY && rtc === 1) { rd = 'left'; rtc++; }
-      } else if (rd === 'left') {
-        rx = it.x - (db ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
-        if (rx < cx - turnX && rtc === 2) { rd = 'up'; rtc++; }
-      } else if (rd === 'up') {
-        ry = it.y - (db ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 8);
-      }
+    if (side === 'right') {
+      var result = advanceAndPlace(t, rCursor, rDir, isD, CX, CY, turnDist, rTurns, rDistFromTurn);
+      layout.push(result.placed);
+      rCursor = result.cursor;
+      if (result.turned) { rTurns++; rDistFromTurn = 0; }
+      rDir = result.dir;
+      rDistFromTurn = result.dist;
     } else {
-      const it = placeTileLeft(t, lx, ly, ld, db);
-      layout.push(it);
-
-      if (ld === 'left') {
-        lx = it.x - TILE_GAP;
-        if (lx < cx - turnX && ltc === 0) { ld = 'up'; ltc++; }
-      } else if (ld === 'up') {
-        ly = it.y - TILE_GAP;
-        if (ly < cy - turnY && ltc === 1) { ld = 'right'; ltc++; }
-      } else if (ld === 'right') {
-        lx = it.x + (db ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
-        if (lx > cx + turnX && ltc === 2) { ld = 'down'; ltc++; }
-      } else if (ld === 'down') {
-        ly = it.y + (db ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 8);
-      }
+      var result = advanceAndPlace(t, lCursor, lDir, isD, CX, CY, turnDist, lTurns, lDistFromTurn);
+      layout.push(result.placed);
+      lCursor = result.cursor;
+      if (result.turned) { lTurns++; lDistFromTurn = 0; }
+      lDir = result.dir;
+      lDistFromTurn = result.dist;
     }
   }
+
+  /* Attach endpoint positions for tap zones */
+  layout._leftEndpoint = lCursor;
+  layout._rightEndpoint = rCursor;
+
   return layout;
 }
 
-function placeTile(t, x, y, dir, isD) {
-  let h = true, px = x, py = y;
-  if (dir === 'right')     { h = !isD; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
-  else if (dir === 'down') { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; }
-  else if (dir === 'left') { h = !isD; px = isD ? x - TILE_W : x - TILE_H; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
-  else if (dir === 'up')   { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; py = isD ? y - TILE_W : y - TILE_H; }
-  return { ...t, x: px, y: py, horizontal: h };
+/*
+  advanceAndPlace: places a tile at the cursor position in the given direction,
+  returns the new cursor position and whether a turn occurred.
+  
+  cursor = {x, y} — the center-point of the connecting edge
+  dir = 'right'|'left'|'down'|'up'
+  isD = is double (perpendicular to chain)
+*/
+function advanceAndPlace(tile, cursor, dir, isD, cx, cy, turnDist, turnCount, distFromTurn) {
+  var placed, newCursor, newDir = dir, turned = false, tileDim;
+
+  if (dir === 'right') {
+    if (isD) {
+      /* Double: vertical tile (30×60) centered on spine */
+      placed = { ...tile, x: cursor.x, y: cursor.y - TILE_H/2, horizontal: false };
+      tileDim = TILE_W;
+    } else {
+      /* Normal: horizontal tile (60×30) */
+      placed = { ...tile, x: cursor.x, y: cursor.y - TILE_W/2, horizontal: true };
+      tileDim = TILE_H;
+    }
+    newCursor = { x: cursor.x + tileDim + GAP, y: cursor.y };
+  }
+  else if (dir === 'left') {
+    if (isD) {
+      placed = { ...tile, x: cursor.x - TILE_W, y: cursor.y - TILE_H/2, horizontal: false };
+      tileDim = TILE_W;
+    } else {
+      placed = { ...tile, x: cursor.x - TILE_H, y: cursor.y - TILE_W/2, horizontal: true };
+      tileDim = TILE_H;
+    }
+    newCursor = { x: cursor.x - tileDim - GAP, y: cursor.y };
+  }
+  else if (dir === 'down') {
+    if (isD) {
+      /* Double: horizontal tile (60×30) centered on spine */
+      placed = { ...tile, x: cursor.x - TILE_H/2, y: cursor.y, horizontal: true };
+      tileDim = TILE_W;
+    } else {
+      /* Normal: vertical tile (30×60) */
+      placed = { ...tile, x: cursor.x - TILE_W/2, y: cursor.y, horizontal: false };
+      tileDim = TILE_H;
+    }
+    newCursor = { x: cursor.x, y: cursor.y + tileDim + GAP };
+  }
+  else { /* up */
+    if (isD) {
+      placed = { ...tile, x: cursor.x - TILE_H/2, y: cursor.y - TILE_W, horizontal: true };
+      tileDim = TILE_W;
+    } else {
+      placed = { ...tile, x: cursor.x - TILE_W/2, y: cursor.y - TILE_H, horizontal: false };
+      tileDim = TILE_H;
+    }
+    newCursor = { x: cursor.x, y: cursor.y - tileDim - GAP };
+  }
+
+  /* Check if we need to turn — max 3 turns per chain to prevent spiral self-overlap */
+  var newDist = distFromTurn + tileDim + GAP;
+  if (newDist >= turnDist && turnCount < 3) {
+    var nextDir = getNextDirection(dir);
+    /* Full-tile corner offset guarantees parallel segments never overlap */
+    var cornerOff = TILE_H + GAP;
+    if (dir === 'right')     newCursor = { x: newCursor.x, y: newCursor.y + cornerOff };
+    else if (dir === 'down') newCursor = { x: newCursor.x - cornerOff, y: newCursor.y };
+    else if (dir === 'left') newCursor = { x: newCursor.x, y: newCursor.y - cornerOff };
+    else if (dir === 'up')   newCursor = { x: newCursor.x + cornerOff, y: newCursor.y };
+    newDir = nextDir;
+    turned = true;
+    newDist = 0;
+  }
+
+  return { placed: placed, cursor: newCursor, dir: newDir, turned: turned, dist: newDist };
 }
 
-function placeTileLeft(t, x, y, dir, isD) {
-  let h = true, px = x, py = y;
-  if (dir === 'left')      { h = !isD; px = isD ? x - TILE_W : x - TILE_H; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
-  else if (dir === 'up')   { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; py = isD ? y - TILE_W : y - TILE_H; }
-  else if (dir === 'right'){ h = !isD; py = isD ? y - (TILE_H - TILE_W) / 2 : y; }
-  else if (dir === 'down') { h = isD;  px = isD ? x - (TILE_H - TILE_W) / 2 : x; }
-  return { ...t, x: px, y: py, horizontal: h };
+/* Clockwise turn: right→down→left→up→right for right chain
+   Counter-clockwise: left→up→right→down→left for left chain */
+function getNextDirection(dir) {
+  var map = { right: 'down', down: 'left', left: 'up', up: 'right' };
+  return map[dir] || 'right';
 }
 
 /*═══════════════════════════════════════════════════════════════
@@ -1218,8 +1323,8 @@ function placeTileLeft(t, x, y, dir, isD) {
     Vertical:   30w × 60h  →  two halves of 30×30 stacked
   
   Each half uses a 3×3 grid for pip placement:
-    Grid origin at half-center, spacing = 8 units,
-    so pips range from center±8  (e.g. 7 to 23 in a 30-unit half)
+    Grid origin at half-center, spacing = 7.5 units,
+    so pips range from center±7.5  (7.5 to 22.5 in a 30-unit half)
     Pip radius = 2.8 units → clearly visible solid black circles
 ═══════════════════════════════════════════════════════════════*/
 function createTileSVG(a, b, horizontal, _, scale) {
@@ -1290,39 +1395,93 @@ function createTileSVG(a, b, horizontal, _, scale) {
 }
 
 /*═══════════════════════════════════════════════════════════════
-  HAND & INTERACTION
+  HAND & TAP-TO-PLACE INTERACTION
+  
+  Flow: tap tile in hand → if one side only, auto-play.
+  If both sides, tile stays selected (glowing) and endpoint
+  zones appear on the board. Tap an endpoint to place.
+  Tap the selected tile again to deselect.
 ═══════════════════════════════════════════════════════════════*/
-function renderHand(gs,imt){
+function renderHand(gs, imt) {
   const myUid = currentUser ? currentUser.uid : 'player';
-  const c=document.getElementById('handTiles'), mh=gs.hands[myUid]||[];
-  document.getElementById('handLabel').textContent=`Tus fichas (${mh.length})`;
-  c.innerHTML=mh.map(tid=>{const t=parseTile(tid),pl=imt&&gs.status==='playing'&&canPlayTile(t,gs);
-    return`<div class="hand-tile ${pl?'playable':''} ${selectedTile===tid?'selected':''}" onclick="${pl?`selectTile('${tid}')`:''}" data-tile="${tid}">${createTileSVG(t.a,t.b,true,true,1.4)}</div>`;}).join('');
+  const c = document.getElementById('handTiles'), mh = gs.hands[myUid] || [];
+  document.getElementById('handLabel').textContent = 'Tus fichas (' + mh.length + ')';
+
+  /* Show hint when a tile is selected and waiting for endpoint tap */
+  var hint = '';
+  if (selectedTile && imt) {
+    hint = '<div class="selection-hint">Toca ◀ o ▶ en la mesa para colocar</div>';
+  }
+
+  c.innerHTML = hint + mh.map(function(tid) {
+    var t = parseTile(tid);
+    var pl = imt && gs.status === 'playing' && canPlayTile(t, gs);
+    var isSelected = selectedTile === tid;
+    var cls = 'hand-tile';
+    if (pl) cls += ' playable';
+    if (isSelected) cls += ' awaiting-placement';
+    return '<div class="' + cls + '" onclick="' + (pl ? "selectTile('" + tid + "')" : '') + '" data-tile="' + tid + '">'
+      + createTileSVG(t.a, t.b, true, true, 1.4) + '</div>';
+  }).join('');
 }
-function parseTile(id){const[a,b]=id.split('-').map(Number);return{a,b,id};}
-function canPlayTile(t,gs){
-  if(gs.board.length===0){if(gs.handNumber===1||!gs.handNumber)return t.a===6&&t.b===6;return true;}
-  return t.a===gs.leftEnd||t.b===gs.leftEnd||t.a===gs.rightEnd||t.b===gs.rightEnd;
+
+function parseTile(id) { var p = id.split('-'); return { a: +p[0], b: +p[1], id: id }; }
+
+function canPlayTile(t, gs) {
+  if (gs.board.length === 0) {
+    if (gs.handNumber === 1 || !gs.handNumber) return t.a === 6 && t.b === 6;
+    return true;
+  }
+  return t.a === gs.leftEnd || t.b === gs.leftEnd || t.a === gs.rightEnd || t.b === gs.rightEnd;
 }
-function selectTile(tid){
-  const myUid = currentUser ? currentUser.uid : 'player';
-  if(!gameState||gameState.currentTurn!==myUid)return;
-  const t=parseTile(tid),gs=gameState;
-  if(gs.board.length===0){playTile(tid,'right');return;}
-  const cl=t.a===gs.leftEnd||t.b===gs.leftEnd,cr=t.a===gs.rightEnd||t.b===gs.rightEnd;
-  if(cl&&cr&&gs.leftEnd!==gs.rightEnd){selectedTile=tid;renderHand(gs,true);showSideChoice(tid);}
-  else if(cl)playTile(tid,'left');else if(cr)playTile(tid,'right');
-}
-function showSideChoice(tid){
-  const ex=document.getElementById('sideChoiceModal');if(ex)ex.remove();
-  const o=document.createElement('div');o.className='modal-overlay';o.id='sideChoiceModal';
-  o.innerHTML=`<div class="modal" style="text-align:center;"><h3>¿Dónde jugar?</h3><p style="color:var(--text-secondary);margin-bottom:20px;font-size:0.9rem;">Izquierda: ${gameState.leftEnd} | Derecha: ${gameState.rightEnd}</p><div style="display:flex;gap:12px;"><button class="btn btn-primary" style="flex:1" onclick="document.getElementById('sideChoiceModal').remove();playTile('${tid}','left');">◀ Izquierda</button><button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('sideChoiceModal').remove();playTile('${tid}','right');">Derecha ▶</button></div></div>`;
-  document.body.appendChild(o);
+
+function selectTile(tid) {
+  var myUid = currentUser ? currentUser.uid : 'player';
+  if (!gameState || gameState.currentTurn !== myUid) return;
+  var gs = gameState;
+
+  /* Tapping the already-selected tile deselects it */
+  if (selectedTile === tid) {
+    selectedTile = null;
+    renderHand(gs, true);
+    renderBoard(gs);
+    return;
+  }
+
+  var t = parseTile(tid);
+
+  /* First tile of hand — play directly */
+  if (gs.board.length === 0) {
+    selectedTile = null;
+    playTile(tid, 'right');
+    return;
+  }
+
+  var canL = t.a === gs.leftEnd || t.b === gs.leftEnd;
+  var canR = t.a === gs.rightEnd || t.b === gs.rightEnd;
+
+  if (canL && canR && gs.leftEnd !== gs.rightEnd) {
+    /* Can play both sides — select tile and show endpoint zones on board */
+    selectedTile = tid;
+    renderHand(gs, true);
+    renderBoard(gs); /* This will draw the endpoint tap zones */
+  } else if (canL && canR && gs.leftEnd === gs.rightEnd) {
+    /* Both ends same number — just play right */
+    selectedTile = null;
+    playTile(tid, 'right');
+  } else if (canL) {
+    selectedTile = null;
+    playTile(tid, 'left');
+  } else if (canR) {
+    selectedTile = null;
+    playTile(tid, 'right');
+  }
 }
 
 async function playTile(tid,side){
   if (isSinglePlayer) { spPlayTile(tid, side); return; }
-  selectedTile=null;const gs=gameState;
+  selectedTile=null;
+  const gs=gameState;
   if(gs.currentTurn!==currentUser.uid||gs.status!=='playing')return;
   const t=parseTile(tid),mh=[...gs.hands[currentUser.uid]],ti=mh.indexOf(tid);if(ti===-1)return;mh.splice(ti,1);
   let pa=t.a,pb=t.b;
