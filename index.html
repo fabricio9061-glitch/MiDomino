@@ -1,0 +1,1871 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dominó Venezolano Online</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*──────────────────────────────────────────────
+  CSS VARIABLES & RESET
+──────────────────────────────────────────────*/
+:root {
+  --bg-primary: #0a1628;
+  --bg-secondary: #111d35;
+  --bg-card: #162242;
+  --bg-surface: #1a2a4a;
+  --accent: #f0c040;
+  --accent-hover: #ffd666;
+  --accent-dim: #c9a020;
+  --green: #2ecc71;
+  --green-dim: #1a8a4a;
+  --red: #e74c3c;
+  --red-dim: #b83a2e;
+  --blue: #3498db;
+  --text-primary: #f0f0f0;
+  --text-secondary: #8899bb;
+  --text-muted: #556688;
+  --border: #2a3a5a;
+  --tile-face: #fffff0;
+  --tile-back: #1a2a4a;
+  --tile-dot: #222;
+  --tile-border: #bbb;
+  --tile-shadow: rgba(0,0,0,0.4);
+  --tile-glow: rgba(240,192,64,0.5);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+  --font-display: 'Anybody', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { 
+  height: 100%; 
+  overflow: hidden;
+  font-family: var(--font-body);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  background-image: 
+    radial-gradient(ellipse at 20% 50%, rgba(240,192,64,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(46,204,113,0.03) 0%, transparent 50%);
+}
+input, button, textarea, select { font-family: inherit; }
+button { cursor: pointer; border: none; outline: none; }
+input, textarea { outline: none; }
+a { color: var(--accent); text-decoration: none; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/*──────────────────────────────────────────────
+  SCREEN MANAGEMENT
+──────────────────────────────────────────────*/
+.screen { 
+  display: none; 
+  width: 100%; 
+  height: 100%; 
+  position: absolute; 
+  top: 0; left: 0;
+  animation: fadeIn 0.3s ease;
+}
+.screen.active { display: flex; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes tilePlace { 
+  from { transform: scale(1.3); opacity: 0.5; } 
+  to { transform: scale(1); opacity: 1; } 
+}
+
+/*──────────────────────────────────────────────
+  COMMON UI ELEMENTS
+──────────────────────────────────────────────*/
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 24px; border-radius: var(--radius-sm);
+  font-weight: 700; font-size: 0.95rem; letter-spacing: 0.02em;
+  transition: all var(--transition); position: relative; overflow: hidden;
+}
+.btn-primary {
+  background: var(--accent); color: var(--bg-primary);
+}
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(240,192,64,0.3); }
+.btn-secondary {
+  background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger { background: var(--red); color: white; }
+.btn-danger:hover { background: var(--red-dim); }
+.btn-small { padding: 8px 16px; font-size: 0.85rem; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+.btn-block { width: 100%; }
+
+.input-group { margin-bottom: 16px; }
+.input-group label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
+.input-group input, .input-group select {
+  width: 100%; padding: 12px 16px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-primary); font-size: 0.95rem; transition: border var(--transition);
+}
+.input-group input:focus, .input-group select:focus { border-color: var(--accent); }
+.input-group input::placeholder { color: var(--text-muted); }
+
+.badge {
+  display: inline-flex; align-items: center; padding: 4px 10px;
+  border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+}
+.badge-gold { background: rgba(240,192,64,0.15); color: var(--accent); }
+.badge-green { background: rgba(46,204,113,0.15); color: var(--green); }
+.badge-red { background: rgba(231,76,60,0.15); color: var(--red); }
+.badge-blue { background: rgba(52,152,219,0.15); color: var(--blue); }
+
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  padding: 12px 24px; border-radius: var(--radius-sm); font-weight: 600;
+  z-index: 9999; animation: slideUp 0.3s ease; font-size: 0.9rem;
+  max-width: 90vw; text-align: center;
+}
+.toast-success { background: var(--green); color: white; }
+.toast-error { background: var(--red); color: white; }
+.toast-info { background: var(--blue); color: white; }
+
+.loader {
+  width: 28px; height: 28px; border: 3px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto;
+}
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease;
+}
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px; width: 90%; max-width: 420px;
+  animation: slideUp 0.3s ease;
+}
+.modal h3 { font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 16px; }
+
+/*──────────────────────────────────────────────
+  AUTH SCREEN
+──────────────────────────────────────────────*/
+#authScreen {
+  flex-direction: column; align-items: center; justify-content: center;
+  padding: 20px; overflow-y: auto;
+}
+.auth-container {
+  width: 100%; max-width: 400px; animation: slideUp 0.5s ease;
+}
+.auth-logo {
+  text-align: center; margin-bottom: 32px;
+}
+.auth-logo h1 {
+  font-family: var(--font-display); font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 900; background: linear-gradient(135deg, var(--accent), var(--green));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; line-height: 1.1;
+}
+.auth-logo p { color: var(--text-secondary); margin-top: 8px; font-size: 0.95rem; }
+.auth-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px;
+}
+.auth-tabs {
+  display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-primary);
+  border-radius: var(--radius-sm); padding: 4px;
+}
+.auth-tab {
+  flex: 1; padding: 10px; text-align: center; border-radius: 6px;
+  font-weight: 600; font-size: 0.9rem; color: var(--text-secondary);
+  background: transparent; transition: all var(--transition);
+}
+.auth-tab.active { background: var(--accent); color: var(--bg-primary); }
+.auth-form { display: none; }
+.auth-form.active { display: block; }
+.auth-error { color: var(--red); font-size: 0.85rem; margin-top: 8px; min-height: 20px; }
+
+/*──────────────────────────────────────────────
+  LOBBY SCREEN
+──────────────────────────────────────────────*/
+#lobbyScreen {
+  flex-direction: column; height: 100%;
+}
+.lobby-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.lobby-header h2 { 
+  font-family: var(--font-display); font-size: 1.2rem;
+  background: linear-gradient(135deg, var(--accent), var(--green));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.lobby-user { display: flex; align-items: center; gap: 10px; }
+.lobby-user .avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--green));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 0.85rem; color: var(--bg-primary);
+}
+.lobby-user span { font-weight: 600; font-size: 0.9rem; }
+
+.lobby-content {
+  flex: 1; overflow-y: auto; padding: 20px;
+}
+.lobby-actions {
+  display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;
+}
+.rooms-title {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.rooms-title h3 { font-family: var(--font-display); font-size: 1.1rem; }
+.rooms-title .count { color: var(--text-secondary); font-size: 0.85rem; }
+
+.room-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  transition: all var(--transition); flex-wrap: wrap; gap: 10px;
+}
+.room-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.room-info h4 { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+.room-info .room-meta { display: flex; gap: 10px; flex-wrap: wrap; }
+.room-info .room-meta span { font-size: 0.8rem; color: var(--text-secondary); }
+.room-empty {
+  text-align: center; padding: 48px 20px; color: var(--text-muted);
+}
+.room-empty svg { width: 60px; height: 60px; opacity: 0.3; margin-bottom: 16px; }
+
+/*──────────────────────────────────────────────
+  WAITING ROOM
+──────────────────────────────────────────────*/
+#waitingScreen {
+  flex-direction: column; align-items: center; justify-content: center;
+  padding: 20px; text-align: center;
+}
+.waiting-container { width: 100%; max-width: 500px; }
+.waiting-container h2 {
+  font-family: var(--font-display); font-size: 1.5rem; margin-bottom: 8px;
+}
+.waiting-container .room-code {
+  font-family: var(--font-display); font-size: 2rem; color: var(--accent);
+  letter-spacing: 4px; margin: 16px 0;
+}
+.players-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 24px 0;
+}
+.player-slot {
+  background: var(--bg-card); border: 2px dashed var(--border);
+  border-radius: var(--radius); padding: 20px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  transition: all var(--transition);
+}
+.player-slot.filled { border-style: solid; border-color: var(--green); }
+.player-slot.team-a.filled { border-color: var(--accent); }
+.player-slot.team-b.filled { border-color: var(--blue); }
+.player-slot .slot-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 1rem;
+}
+.player-slot.filled .slot-avatar { background: var(--green); color: var(--bg-primary); }
+.player-slot.team-a.filled .slot-avatar { background: var(--accent); color: var(--bg-primary); }
+.player-slot.team-b.filled .slot-avatar { background: var(--blue); color: white; }
+.player-slot:not(.filled) .slot-avatar { background: var(--bg-surface); color: var(--text-muted); }
+.player-slot .slot-name { font-weight: 600; font-size: 0.85rem; }
+.player-slot .slot-team { font-size: 0.75rem; color: var(--text-secondary); }
+.waiting-settings { margin: 20px 0; }
+.waiting-settings label { font-size: 0.9rem; color: var(--text-secondary); margin-right: 8px; }
+.waiting-settings select {
+  padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary); font-size: 0.9rem;
+}
+.waiting-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+/*──────────────────────────────────────────────
+  GAME SCREEN
+──────────────────────────────────────────────*/
+#gameScreen {
+  flex-direction: column; height: 100%; overflow: hidden;
+}
+
+/* Top bar */
+.game-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  min-height: 48px;
+}
+.game-topbar .scores {
+  display: flex; gap: 14px; align-items: center; font-size: 0.85rem; font-weight: 700;
+}
+.score-team { display: flex; align-items: center; gap: 5px; }
+.score-team.team-a { color: var(--accent); }
+.score-team.team-b { color: var(--blue); }
+.score-val { font-family: var(--font-display); font-size: 1.1rem; }
+.game-topbar .turn-indicator {
+  font-size: 0.8rem; color: var(--text-secondary);
+  text-align: center; flex: 1;
+}
+.game-topbar .turn-indicator.my-turn { color: var(--green); font-weight: 700; }
+.game-topbar .game-actions button {
+  background: none; color: var(--text-secondary); font-size: 1.2rem;
+  padding: 6px; transition: color var(--transition);
+}
+.game-topbar .game-actions button:hover { color: var(--text-primary); }
+
+/* Opponent areas */
+.opponent-area {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  flex-shrink: 0;
+}
+.opponent-info {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.opponent-info .opp-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 900; flex-shrink: 0;
+}
+.opponent-info .opp-name { font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opponent-info .opp-tiles { font-size: 0.7rem; color: var(--text-muted); }
+.opponent-info.current-turn .opp-name { color: var(--green); }
+.opponent-tiles {
+  display: flex; gap: 2px; flex-wrap: wrap;
+}
+.mini-tile {
+  width: 14px; height: 22px; background: var(--tile-back);
+  border: 1px solid var(--border); border-radius: 2px;
+}
+
+/* Board */
+.board-wrapper {
+  flex: 1; overflow: auto; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-overflow-scrolling: touch;
+}
+.board-container {
+  position: relative; min-width: 300px; min-height: 200px;
+  padding: 40px;
+}
+.board-tile {
+  position: absolute; animation: tilePlace 0.3s ease;
+}
+
+/* Player hand */
+.hand-area {
+  background: var(--bg-secondary); border-top: 1px solid var(--border);
+  padding: 10px 8px; flex-shrink: 0;
+}
+.hand-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px; padding: 0 4px;
+}
+.hand-label { font-size: 0.8rem; color: var(--text-secondary); font-weight: 600; }
+.hand-tiles {
+  display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px;
+  justify-content: center; flex-wrap: wrap;
+}
+.hand-tile {
+  cursor: pointer; transition: transform var(--transition), box-shadow var(--transition);
+  flex-shrink: 0;
+}
+.hand-tile:hover { transform: translateY(-6px); }
+.hand-tile.selected { transform: translateY(-10px); box-shadow: 0 6px 20px var(--tile-glow); }
+.hand-tile.playable { }
+.hand-tile:not(.playable) { opacity: 0.45; cursor: not-allowed; }
+.hand-tile:not(.playable):hover { transform: none; }
+
+/*──────────────────────────────────────────────
+  DOMINO TILE SVG STYLES
+──────────────────────────────────────────────*/
+.domino-tile { filter: drop-shadow(1px 2px 3px var(--tile-shadow)); }
+
+/*──────────────────────────────────────────────
+  CHAT PANEL
+──────────────────────────────────────────────*/
+.chat-panel {
+  position: fixed; right: 0; top: 0; bottom: 0; width: 320px;
+  background: var(--bg-secondary); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 500;
+  transform: translateX(100%); transition: transform 0.3s ease;
+}
+.chat-panel.open { transform: translateX(0); }
+.chat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.chat-header h4 { font-family: var(--font-display); font-size: 1rem; }
+.chat-header button { background: none; color: var(--text-secondary); font-size: 1.3rem; }
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chat-msg {
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-card); font-size: 0.85rem;
+}
+.chat-msg .msg-author { font-weight: 700; font-size: 0.78rem; color: var(--accent); margin-bottom: 2px; }
+.chat-msg .msg-text { color: var(--text-primary); word-break: break-word; }
+.chat-msg .msg-time { font-size: 0.7rem; color: var(--text-muted); margin-top: 3px; }
+.chat-msg.system { background: rgba(240,192,64,0.08); font-style: italic; color: var(--text-secondary); }
+.chat-input-area {
+  display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border);
+}
+.chat-input-area input {
+  flex: 1; padding: 10px 14px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-primary); font-size: 0.9rem;
+}
+.chat-input-area button {
+  padding: 10px 16px; background: var(--accent); color: var(--bg-primary);
+  border-radius: var(--radius-sm); font-weight: 700; font-size: 0.9rem;
+}
+
+/*──────────────────────────────────────────────
+  RESPONSIVE
+──────────────────────────────────────────────*/
+@media (max-width: 768px) {
+  .lobby-header h2 { font-size: 1rem; }
+  .lobby-user span { display: none; }
+  .chat-panel { width: 100%; }
+  .hand-tiles { justify-content: flex-start; flex-wrap: nowrap; }
+  .players-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opponent-area { padding: 4px 8px; }
+  .board-container { padding: 20px; }
+  .game-topbar { padding: 6px 8px; }
+  .game-topbar .scores { gap: 8px; font-size: 0.8rem; }
+}
+@media (max-width: 400px) {
+  .auth-card { padding: 20px; }
+  .auth-logo h1 { font-size: 1.8rem; }
+  .players-grid { gap: 6px; }
+  .player-slot { padding: 14px 8px; }
+}
+@media (min-width: 1024px) {
+  .hand-tiles { justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     AUTH SCREEN
+     ═══════════════════════════════════════════ -->
+<div id="authScreen" class="screen active">
+  <div class="auth-container">
+    <div class="auth-logo">
+      <h1>DOMINÓ</h1>
+      <p>Venezolano Online — Juega con amigos en tiempo real</p>
+    </div>
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login')">Iniciar Sesión</button>
+        <button class="auth-tab" onclick="switchAuthTab('register')">Registrarse</button>
+      </div>
+      <div id="loginForm" class="auth-form active">
+        <div class="input-group">
+          <label>Correo electrónico</label>
+          <input type="email" id="loginEmail" placeholder="tu@correo.com" autocomplete="email">
+        </div>
+        <div class="input-group">
+          <label>Contraseña</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-block" id="loginBtn" onclick="handleLogin()">Entrar</button>
+        <div class="auth-error" id="loginError"></div>
+      </div>
+      <div id="registerForm" class="auth-form">
+        <div class="input-group">
+          <label>Nombre de usuario</label>
+          <input type="text" id="regName" placeholder="Tu nombre" autocomplete="name">
+        </div>
+        <div class="input-group">
+          <label>Correo electrónico</label>
+          <input type="email" id="regEmail" placeholder="tu@correo.com" autocomplete="email">
+        </div>
+        <div class="input-group">
+          <label>Contraseña (mín. 6 caracteres)</label>
+          <input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <button class="btn btn-primary btn-block" id="regBtn" onclick="handleRegister()">Crear Cuenta</button>
+        <div class="auth-error" id="regError"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     LOBBY SCREEN
+     ═══════════════════════════════════════════ -->
+<div id="lobbyScreen" class="screen">
+  <div class="lobby-header">
+    <h2>🎲 DOMINÓ</h2>
+    <div class="lobby-user">
+      <span id="lobbyUserName"></span>
+      <div class="avatar" id="lobbyAvatar"></div>
+      <button class="btn btn-small btn-secondary" onclick="handleLogout()">Salir</button>
+    </div>
+  </div>
+  <div class="lobby-content">
+    <div class="lobby-actions">
+      <button class="btn btn-primary" onclick="showCreateRoom()">＋ Crear Sala</button>
+      <button class="btn btn-secondary" onclick="refreshRooms()">⟳ Actualizar</button>
+    </div>
+    <div class="rooms-title">
+      <h3>Salas Disponibles</h3>
+      <span class="count" id="roomCount">0 salas</span>
+    </div>
+    <div id="roomsList"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     WAITING ROOM SCREEN
+     ═══════════════════════════════════════════ -->
+<div id="waitingScreen" class="screen">
+  <div class="waiting-container">
+    <h2 id="waitingRoomName">Sala de Juego</h2>
+    <p style="color:var(--text-secondary); font-size:0.9rem;">Esperando jugadores...</p>
+    <div class="room-code" id="waitingRoomCode">---</div>
+    <div class="players-grid" id="waitingPlayers"></div>
+    <div class="waiting-settings" id="waitingSettings">
+      <label>Puntos para ganar:</label>
+      <select id="targetScoreSelect">
+        <option value="75">75 puntos</option>
+        <option value="100">100 puntos</option>
+      </select>
+    </div>
+    <div class="waiting-actions">
+      <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" disabled>Iniciar Partida</button>
+      <button class="btn btn-danger btn-small" onclick="leaveRoom()">Abandonar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     GAME SCREEN
+     ═══════════════════════════════════════════ -->
+<div id="gameScreen" class="screen">
+  <!-- Top bar -->
+  <div class="game-topbar">
+    <div class="scores">
+      <div class="score-team team-a">
+        <span>Par A</span>
+        <span class="score-val" id="scoreA">0</span>
+      </div>
+      <span style="color:var(--text-muted);">|</span>
+      <div class="score-team team-b">
+        <span>Par B</span>
+        <span class="score-val" id="scoreB">0</span>
+      </div>
+    </div>
+    <div class="turn-indicator" id="turnIndicator">Turno: ---</div>
+    <div class="game-actions">
+      <button onclick="toggleChat()" title="Chat">💬</button>
+      <button onclick="leaveRoom()" title="Salir">✕</button>
+    </div>
+  </div>
+
+  <!-- Top opponent -->
+  <div class="opponent-area" id="oppTop"></div>
+
+  <!-- Middle row: left opponent, board, right opponent -->
+  <div style="display:flex; flex:1; overflow:hidden;">
+    <div class="opponent-area" id="oppLeft" style="flex-direction:column; width:auto; padding:8px 4px;"></div>
+    <div class="board-wrapper" id="boardWrapper">
+      <div class="board-container" id="boardContainer"></div>
+    </div>
+    <div class="opponent-area" id="oppRight" style="flex-direction:column; width:auto; padding:8px 4px;"></div>
+  </div>
+
+  <!-- Player hand -->
+  <div class="hand-area">
+    <div class="hand-controls">
+      <span class="hand-label" id="handLabel">Tus fichas (7)</span>
+      <button class="btn btn-small btn-secondary" id="passBtn" onclick="passTurn()" style="display:none;">Pasar Turno</button>
+    </div>
+    <div class="hand-tiles" id="handTiles"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     CHAT PANEL (overlay)
+     ═══════════════════════════════════════════ -->
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header">
+    <h4>💬 Chat</h4>
+    <button onclick="toggleChat()">✕</button>
+  </div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-input-area">
+    <input type="text" id="chatInput" placeholder="Escribe un mensaje..." maxlength="200"
+      onkeydown="if(event.key==='Enter')sendChatMessage()">
+    <button onclick="sendChatMessage()">Enviar</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     FIREBASE SDK (compat for simpler usage)
+     ═══════════════════════════════════════════ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+/*═══════════════════════════════════════════════════════════════
+  FIREBASE INITIALIZATION
+═══════════════════════════════════════════════════════════════*/
+const firebaseConfig = {
+  apiKey: "AIzaSyBK-L9Av1SeAxs-7jPsQslDnf-MYgbVKaQ",
+  authDomain: "midomino-7683c.firebaseapp.com",
+  projectId: "midomino-7683c",
+  storageBucket: "midomino-7683c.firebasestorage.app",
+  messagingSenderId: "233403050512",
+  appId: "1:233403050512:web:4313476c503ee68d097895"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/*═══════════════════════════════════════════════════════════════
+  GLOBAL STATE
+═══════════════════════════════════════════════════════════════*/
+let currentUser = null;
+let currentRoom = null;
+let currentRoomId = null;
+let gameState = null;
+let unsubRoom = null;
+let unsubGame = null;
+let unsubChat = null;
+let unsubRooms = null;
+let selectedTile = null;
+
+/*═══════════════════════════════════════════════════════════════
+  UTILITY FUNCTIONS
+═══════════════════════════════════════════════════════════════*/
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showToast(msg, type = 'info') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function getUserInitials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+/*═══════════════════════════════════════════════════════════════
+  AUTH MODULE
+═══════════════════════════════════════════════════════════════*/
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+  if (tab === 'login') {
+    document.querySelectorAll('.auth-tab')[0].classList.add('active');
+    document.getElementById('loginForm').classList.add('active');
+  } else {
+    document.querySelectorAll('.auth-tab')[1].classList.add('active');
+    document.getElementById('registerForm').classList.add('active');
+  }
+}
+
+async function handleRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const errEl = document.getElementById('regError');
+  errEl.textContent = '';
+
+  if (!name) { errEl.textContent = 'Ingresa tu nombre.'; return; }
+  if (!email) { errEl.textContent = 'Ingresa tu correo.'; return; }
+  if (password.length < 6) { errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+
+  document.getElementById('regBtn').disabled = true;
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    await cred.user.updateProfile({ displayName: name });
+    await db.collection('users').doc(cred.user.uid).set({
+      name: name,
+      email: email,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      gamesPlayed: 0,
+      gamesWon: 0
+    });
+    showToast('¡Cuenta creada exitosamente!', 'success');
+  } catch (e) {
+    if (e.code === 'auth/email-already-in-use') {
+      errEl.textContent = 'Este correo ya está registrado.';
+    } else if (e.code === 'auth/invalid-email') {
+      errEl.textContent = 'Correo electrónico inválido.';
+    } else {
+      errEl.textContent = e.message;
+    }
+  }
+  document.getElementById('regBtn').disabled = false;
+}
+
+async function handleLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+
+  if (!email || !password) { errEl.textContent = 'Completa todos los campos.'; return; }
+
+  document.getElementById('loginBtn').disabled = true;
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    showToast('¡Bienvenido!', 'success');
+  } catch (e) {
+    if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      errEl.textContent = 'Correo o contraseña incorrectos.';
+    } else if (e.code === 'auth/invalid-email') {
+      errEl.textContent = 'Correo electrónico inválido.';
+    } else {
+      errEl.textContent = e.message;
+    }
+  }
+  document.getElementById('loginBtn').disabled = false;
+}
+
+function handleLogout() {
+  cleanupListeners();
+  auth.signOut();
+}
+
+// Auth state observer
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUser = { uid: user.uid, name: user.displayName || 'Jugador', email: user.email };
+    document.getElementById('lobbyUserName').textContent = currentUser.name;
+    document.getElementById('lobbyAvatar').textContent = getUserInitials(currentUser.name);
+    showScreen('lobbyScreen');
+    listenRooms();
+  } else {
+    currentUser = null;
+    cleanupListeners();
+    showScreen('authScreen');
+  }
+});
+
+/*═══════════════════════════════════════════════════════════════
+  ROOMS / LOBBY MODULE
+═══════════════════════════════════════════════════════════════*/
+function listenRooms() {
+  if (unsubRooms) unsubRooms();
+  unsubRooms = db.collection('rooms')
+    .where('status', 'in', ['waiting', 'playing'])
+    .orderBy('createdAt', 'desc')
+    .limit(30)
+    .onSnapshot(snap => {
+      renderRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, err => {
+      console.error('Rooms listen error:', err);
+    });
+}
+
+function renderRooms(rooms) {
+  const container = document.getElementById('roomsList');
+  document.getElementById('roomCount').textContent = `${rooms.length} sala${rooms.length !== 1 ? 's' : ''}`;
+
+  if (rooms.length === 0) {
+    container.innerHTML = `
+      <div class="room-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="3"/><line x1="9" y1="9" x2="9.01" y2="9"/>
+          <line x1="15" y1="9" x2="15.01" y2="9"/><line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+        <p>No hay salas disponibles.<br>¡Crea una nueva!</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = rooms.map(r => {
+    const playerCount = r.players ? r.players.length : 0;
+    const statusBadge = r.status === 'waiting'
+      ? `<span class="badge badge-green">Esperando</span>`
+      : `<span class="badge badge-gold">Jugando</span>`;
+    const canJoin = r.status === 'waiting' && playerCount < 4;
+    return `
+      <div class="room-card">
+        <div class="room-info">
+          <h4>${escapeHtml(r.name)}</h4>
+          <div class="room-meta">
+            ${statusBadge}
+            <span>👥 ${playerCount}/4</span>
+            <span>🎯 ${r.targetScore || 100} pts</span>
+          </div>
+        </div>
+        ${canJoin ? `<button class="btn btn-primary btn-small" onclick="joinRoom('${r.id}')">Unirse</button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function refreshRooms() {
+  showToast('Actualizando...', 'info');
+}
+
+function showCreateRoom() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'createRoomModal';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Crear Sala</h3>
+      <div class="input-group">
+        <label>Nombre de la sala</label>
+        <input type="text" id="newRoomName" placeholder="Mi sala de dominó" maxlength="40">
+      </div>
+      <div class="input-group">
+        <label>Puntos para ganar</label>
+        <select id="newRoomTarget">
+          <option value="75">75 puntos</option>
+          <option value="100" selected>100 puntos</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-primary" style="flex:1" onclick="createRoom()">Crear</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('createRoomModal').remove()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('newRoomName').focus();
+}
+
+async function createRoom() {
+  const name = document.getElementById('newRoomName').value.trim() || `Sala de ${currentUser.name}`;
+  const target = parseInt(document.getElementById('newRoomTarget').value);
+  const modal = document.getElementById('createRoomModal');
+
+  try {
+    const roomRef = await db.collection('rooms').add({
+      name: name,
+      code: generateRoomCode(),
+      hostUid: currentUser.uid,
+      status: 'waiting',
+      targetScore: target,
+      players: [{
+        uid: currentUser.uid,
+        name: currentUser.name,
+        team: 'A',
+        seat: 0
+      }],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    if (modal) modal.remove();
+    enterWaitingRoom(roomRef.id);
+  } catch (e) {
+    showToast('Error al crear sala: ' + e.message, 'error');
+  }
+}
+
+async function joinRoom(roomId) {
+  try {
+    const roomRef = db.collection('rooms').doc(roomId);
+    const roomSnap = await roomRef.get();
+    if (!roomSnap.exists) { showToast('Sala no encontrada.', 'error'); return; }
+
+    const data = roomSnap.data();
+    if (data.status !== 'waiting') { showToast('La partida ya comenzó.', 'error'); return; }
+    if (data.players.length >= 4) { showToast('La sala está llena.', 'error'); return; }
+    if (data.players.find(p => p.uid === currentUser.uid)) {
+      enterWaitingRoom(roomId);
+      return;
+    }
+
+    // Auto-assign team and seat
+    const teamACount = data.players.filter(p => p.team === 'A').length;
+    const teamBCount = data.players.filter(p => p.team === 'B').length;
+    const team = teamACount <= teamBCount ? 'A' : 'B';
+    const usedSeats = data.players.map(p => p.seat);
+    // Seats: 0=bottom, 1=right, 2=top, 3=left. Teammates sit across (0,2) and (1,3)
+    let seat;
+    if (team === 'A') {
+      seat = usedSeats.includes(0) ? 2 : 0;
+    } else {
+      seat = usedSeats.includes(1) ? 3 : 1;
+    }
+
+    await roomRef.update({
+      players: firebase.firestore.FieldValue.arrayUnion({
+        uid: currentUser.uid,
+        name: currentUser.name,
+        team: team,
+        seat: seat
+      })
+    });
+    enterWaitingRoom(roomId);
+  } catch (e) {
+    showToast('Error al unirse: ' + e.message, 'error');
+  }
+}
+
+function enterWaitingRoom(roomId) {
+  currentRoomId = roomId;
+  showScreen('waitingScreen');
+
+  if (unsubRoom) unsubRoom();
+  unsubRoom = db.collection('rooms').doc(roomId).onSnapshot(snap => {
+    if (!snap.exists) {
+      showToast('La sala fue eliminada.', 'error');
+      backToLobby();
+      return;
+    }
+    currentRoom = { id: snap.id, ...snap.data() };
+    renderWaitingRoom(currentRoom);
+
+    if (currentRoom.status === 'playing') {
+      enterGame();
+    }
+  });
+}
+
+function renderWaitingRoom(room) {
+  document.getElementById('waitingRoomName').textContent = room.name;
+  document.getElementById('waitingRoomCode').textContent = room.code;
+
+  const isHost = room.hostUid === currentUser.uid;
+  document.getElementById('waitingSettings').style.display = isHost ? 'block' : 'none';
+  document.getElementById('targetScoreSelect').value = room.targetScore || 100;
+
+  const grid = document.getElementById('waitingPlayers');
+  const seats = [null, null, null, null];
+  room.players.forEach(p => { seats[p.seat] = p; });
+
+  const teamLabels = ['Pareja A', 'Pareja B', 'Pareja A', 'Pareja B'];
+  const teamClasses = ['team-a', 'team-b', 'team-a', 'team-b'];
+
+  grid.innerHTML = seats.map((p, i) => {
+    if (p) {
+      return `
+        <div class="player-slot filled ${teamClasses[i]}">
+          <div class="slot-avatar">${getUserInitials(p.name)}</div>
+          <div class="slot-name">${escapeHtml(p.name)}${p.uid === currentUser.uid ? ' (Tú)' : ''}</div>
+          <div class="slot-team">${teamLabels[i]}</div>
+        </div>`;
+    }
+    return `
+      <div class="player-slot ${teamClasses[i]}">
+        <div class="slot-avatar">?</div>
+        <div class="slot-name">Esperando...</div>
+        <div class="slot-team">${teamLabels[i]}</div>
+      </div>`;
+  }).join('');
+
+  const startBtn = document.getElementById('startGameBtn');
+  startBtn.disabled = !(isHost && room.players.length === 4);
+  if (room.players.length === 4 && isHost) {
+    startBtn.textContent = '¡Iniciar Partida!';
+  } else {
+    startBtn.textContent = `Esperando (${room.players.length}/4)`;
+  }
+}
+
+/*═══════════════════════════════════════════════════════════════
+  DOMINO GAME ENGINE
+═══════════════════════════════════════════════════════════════*/
+
+// Generate all 28 domino tiles
+function generateTiles() {
+  const tiles = [];
+  for (let a = 0; a <= 6; a++) {
+    for (let b = a; b <= 6; b++) {
+      tiles.push({ a, b, id: `${a}-${b}` });
+    }
+  }
+  return tiles;
+}
+
+// Shuffle array (Fisher-Yates)
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Start a new game/hand
+async function startGame() {
+  if (!currentRoom || currentRoom.hostUid !== currentUser.uid) return;
+
+  const target = parseInt(document.getElementById('targetScoreSelect').value) || 100;
+  await db.collection('rooms').doc(currentRoomId).update({ targetScore: target });
+
+  await startNewHand(true);
+}
+
+async function startNewHand(isFirstHand = false) {
+  const room = currentRoom;
+  const tiles = shuffle(generateTiles());
+
+  // Deal 7 tiles to each player by seat order (0,1,2,3)
+  const hands = {};
+  const playersBySeat = [...room.players].sort((a, b) => a.seat - b.seat);
+  playersBySeat.forEach((p, i) => {
+    hands[p.uid] = tiles.slice(i * 7, (i + 1) * 7).map(t => t.id);
+  });
+
+  // Find who has double-6
+  let startingPlayer = null;
+  for (const p of playersBySeat) {
+    if (hands[p.uid].includes('6-6')) {
+      startingPlayer = p.uid;
+      break;
+    }
+  }
+  // If no double-6 (shouldn't happen with 4 players), start with seat 0
+  if (!startingPlayer) startingPlayer = playersBySeat[0].uid;
+
+  const existingGame = isFirstHand ? null : (await db.collection('games').doc(currentRoomId).get()).data();
+  const scores = isFirstHand ? { A: 0, B: 0 } : (existingGame ? existingGame.scores : { A: 0, B: 0 });
+
+  const gameData = {
+    roomId: currentRoomId,
+    status: 'playing',
+    hands: hands,
+    board: [],
+    leftEnd: null,
+    rightEnd: null,
+    currentTurn: startingPlayer,
+    turnOrder: playersBySeat.map(p => p.uid),
+    seatMap: {},
+    teamMap: {},
+    scores: scores,
+    targetScore: room.targetScore || 100,
+    passCount: 0,
+    consecutivePasses: 0,
+    handNumber: isFirstHand ? 1 : ((existingGame?.handNumber || 0) + 1),
+    lastMove: null,
+    winner: null,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  playersBySeat.forEach(p => {
+    gameData.seatMap[p.uid] = p.seat;
+    gameData.teamMap[p.uid] = p.team;
+  });
+
+  await db.collection('games').doc(currentRoomId).set(gameData);
+  await db.collection('rooms').doc(currentRoomId).update({ status: 'playing' });
+}
+
+function enterGame() {
+  showScreen('gameScreen');
+  if (unsubGame) unsubGame();
+  unsubGame = db.collection('games').doc(currentRoomId).onSnapshot(snap => {
+    if (!snap.exists) return;
+    gameState = snap.data();
+    renderGame();
+  });
+  listenChat();
+}
+
+/*═══════════════════════════════════════════════════════════════
+  GAME RENDERING
+═══════════════════════════════════════════════════════════════*/
+function renderGame() {
+  if (!gameState || !currentRoom) return;
+
+  const gs = gameState;
+  const myUid = currentUser.uid;
+  const mySeat = gs.seatMap[myUid];
+  const isMyTurn = gs.currentTurn === myUid && gs.status === 'playing';
+
+  // Scores
+  document.getElementById('scoreA').textContent = gs.scores.A;
+  document.getElementById('scoreB').textContent = gs.scores.B;
+
+  // Turn indicator
+  const turnEl = document.getElementById('turnIndicator');
+  if (gs.status === 'finished') {
+    turnEl.textContent = gs.winner ? `¡Ganó Pareja ${gs.winner}!` : 'Mano terminada';
+    turnEl.className = 'turn-indicator';
+  } else if (isMyTurn) {
+    turnEl.textContent = '¡Tu turno!';
+    turnEl.className = 'turn-indicator my-turn';
+  } else {
+    const turnPlayer = currentRoom.players.find(p => p.uid === gs.currentTurn);
+    turnEl.textContent = `Turno: ${turnPlayer ? turnPlayer.name : '...'}`;
+    turnEl.className = 'turn-indicator';
+  }
+
+  // Render opponents
+  renderOpponents(gs, mySeat);
+
+  // Render board
+  renderBoard(gs);
+
+  // Render hand
+  renderHand(gs, isMyTurn);
+
+  // Pass button
+  const passBtn = document.getElementById('passBtn');
+  if (isMyTurn && gs.status === 'playing') {
+    const myHand = gs.hands[myUid] || [];
+    const canPlay = myHand.some(tid => canPlayTile(parseTile(tid), gs));
+    passBtn.style.display = canPlay ? 'none' : 'inline-flex';
+  } else {
+    passBtn.style.display = 'none';
+  }
+}
+
+function renderOpponents(gs, mySeat) {
+  // Map relative positions: top is across, left/right are sides
+  // Seat order going counter-clockwise: me, right, top, left
+  const seatOrder = [(mySeat + 1) % 4, (mySeat + 2) % 4, (mySeat + 3) % 4];
+  const positions = ['oppRight', 'oppTop', 'oppLeft'];
+
+  positions.forEach((posId, i) => {
+    const seat = seatOrder[i];
+    const player = currentRoom.players.find(p => p.seat === seat);
+    const el = document.getElementById(posId);
+
+    if (!player) { el.innerHTML = ''; return; }
+
+    const tileCount = gs.hands[player.uid] ? gs.hands[player.uid].length : 0;
+    const isTurn = gs.currentTurn === player.uid;
+    const teamColor = player.team === 'A' ? 'var(--accent)' : 'var(--blue)';
+
+    el.innerHTML = `
+      <div class="opponent-info ${isTurn ? 'current-turn' : ''}">
+        <div class="opp-avatar" style="background:${teamColor};color:var(--bg-primary)">${getUserInitials(player.name)}</div>
+        <div>
+          <div class="opp-name">${escapeHtml(player.name)}</div>
+          <div class="opp-tiles">${tileCount} fichas</div>
+        </div>
+      </div>
+      <div class="opponent-tiles">
+        ${Array(tileCount).fill('<div class="mini-tile"></div>').join('')}
+      </div>`;
+  });
+}
+
+/*═══════════════════════════════════════════════════════════════
+  BOARD RENDERING (SVG-based tiles)
+═══════════════════════════════════════════════════════════════*/
+const TILE_W = 28;
+const TILE_H = 56;
+const TILE_GAP = 2;
+
+function renderBoard(gs) {
+  const container = document.getElementById('boardContainer');
+  container.innerHTML = '';
+
+  if (!gs.board || gs.board.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:40px;">Esperando primera ficha...</div>';
+    container.style.width = '300px';
+    container.style.height = '200px';
+    return;
+  }
+
+  // Calculate layout - tiles go left/right from center
+  // Each tile has a position and rotation
+  const layout = calculateBoardLayout(gs.board);
+
+  // Compute bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  layout.forEach(item => {
+    const w = item.horizontal ? TILE_H : TILE_W;
+    const h = item.horizontal ? TILE_W : TILE_H;
+    minX = Math.min(minX, item.x);
+    minY = Math.min(minY, item.y);
+    maxX = Math.max(maxX, item.x + w);
+    maxY = Math.max(maxY, item.y + h);
+  });
+
+  const padding = 30;
+  const totalW = (maxX - minX) + padding * 2;
+  const totalH = (maxY - minY) + padding * 2;
+  container.style.width = totalW + 'px';
+  container.style.height = totalH + 'px';
+
+  layout.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'board-tile';
+    div.style.left = (item.x - minX + padding) + 'px';
+    div.style.top = (item.y - minY + padding) + 'px';
+    div.innerHTML = createTileSVG(item.a, item.b, item.horizontal, false, 1);
+    container.appendChild(div);
+  });
+
+  // Auto-scroll to latest tile
+  const wrapper = document.getElementById('boardWrapper');
+  const lastTile = layout[layout.length - 1];
+  if (lastTile) {
+    const centerX = (lastTile.x - minX + padding) - wrapper.clientWidth / 2 + TILE_W;
+    const centerY = (lastTile.y - minY + padding) - wrapper.clientHeight / 2 + TILE_H;
+    wrapper.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' });
+  }
+}
+
+function calculateBoardLayout(board) {
+  if (!board || board.length === 0) return [];
+
+  const layout = [];
+  const centerX = 400;
+  const centerY = 200;
+
+  // First tile
+  const first = board[0];
+  const isDouble = first.a === first.b;
+  layout.push({
+    ...first,
+    x: centerX,
+    y: centerY,
+    horizontal: !isDouble
+  });
+
+  // Track the ends' positions
+  let leftX = centerX, leftY = centerY, leftDir = 'left';
+  let rightX = centerX, rightY = centerY, rightDir = 'right';
+
+  if (!isDouble) {
+    leftX = centerX;
+    rightX = centerX + TILE_H + TILE_GAP;
+  } else {
+    leftX = centerX;
+    rightX = centerX + TILE_W + TILE_GAP;
+  }
+
+  // For direction tracking on turns
+  let leftTurnCount = 0;
+  let rightTurnCount = 0;
+
+  for (let i = 1; i < board.length; i++) {
+    const tile = board[i];
+    const side = tile.side; // 'left' or 'right'
+    const isDb = tile.a === tile.b;
+
+    if (side === 'right') {
+      const item = placeTile(tile, rightX, rightY, rightDir, isDb);
+      layout.push(item);
+      // Update right end position
+      const advance = isDb ? (TILE_W + TILE_GAP) : (TILE_H + TILE_GAP);
+      if (rightDir === 'right') {
+        rightX = item.x + (isDb ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
+        // Check if we need to turn
+        if (rightX > centerX + 500 && rightTurnCount === 0) {
+          rightDir = 'down'; rightTurnCount++;
+        }
+      } else if (rightDir === 'down') {
+        rightY = item.y + (isDb ? TILE_H + TILE_GAP : TILE_W + TILE_GAP + 10);
+        if (rightY > centerY + 200 && rightTurnCount === 1) {
+          rightDir = 'left'; rightTurnCount++;
+        }
+      } else if (rightDir === 'left') {
+        rightX = item.x - (isDb ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
+      }
+    } else {
+      const item = placeTileLeft(tile, leftX, leftY, leftDir, isDb);
+      layout.push(item);
+      const advance = isDb ? (TILE_W + TILE_GAP) : (TILE_H + TILE_GAP);
+      if (leftDir === 'left') {
+        leftX = item.x - TILE_GAP;
+        if (leftX < centerX - 500 && leftTurnCount === 0) {
+          leftDir = 'up'; leftTurnCount++;
+        }
+      } else if (leftDir === 'up') {
+        leftY = item.y - TILE_GAP;
+        if (leftY < centerY - 200 && leftTurnCount === 1) {
+          leftDir = 'right'; leftTurnCount++;
+        }
+      } else if (leftDir === 'right') {
+        leftX = item.x + (isDb ? TILE_W + TILE_GAP : TILE_H + TILE_GAP);
+      }
+    }
+  }
+
+  return layout;
+}
+
+function placeTile(tile, x, y, dir, isDouble) {
+  let horizontal = true;
+  let px = x, py = y;
+
+  if (dir === 'right') {
+    horizontal = !isDouble;
+    px = x;
+    py = isDouble ? y - (TILE_H - TILE_W) / 2 : y;
+  } else if (dir === 'down') {
+    horizontal = isDouble;
+    px = isDouble ? x - (TILE_H - TILE_W) / 2 : x;
+    py = y;
+  } else if (dir === 'left') {
+    horizontal = !isDouble;
+    px = isDouble ? x - TILE_W : x - TILE_H;
+    py = isDouble ? y - (TILE_H - TILE_W) / 2 : y;
+  }
+
+  return { ...tile, x: px, y: py, horizontal };
+}
+
+function placeTileLeft(tile, x, y, dir, isDouble) {
+  let horizontal = true;
+  let px = x, py = y;
+
+  if (dir === 'left') {
+    horizontal = !isDouble;
+    px = isDouble ? x - TILE_W : x - TILE_H;
+    py = isDouble ? y - (TILE_H - TILE_W) / 2 : y;
+  } else if (dir === 'up') {
+    horizontal = isDouble;
+    px = isDouble ? x - (TILE_H - TILE_W) / 2 : x;
+    py = isDouble ? y - TILE_W : y - TILE_H;
+  } else if (dir === 'right') {
+    horizontal = !isDouble;
+    px = x;
+    py = isDouble ? y - (TILE_H - TILE_W) / 2 : y;
+  }
+
+  return { ...tile, x: px, y: py, horizontal };
+}
+
+/*═══════════════════════════════════════════════════════════════
+  SVG TILE DRAWING
+═══════════════════════════════════════════════════════════════*/
+function createTileSVG(a, b, horizontal, isInteractive, scale = 1) {
+  const w = horizontal ? 56 : 28;
+  const h = horizontal ? 28 : 56;
+  const sw = w * scale;
+  const sh = h * scale;
+
+  // Dot positions for each number (in a 3x3 grid mapped to half-tile area)
+  const dotMap = {
+    0: [],
+    1: [[1, 1]],
+    2: [[0, 0], [2, 2]],
+    3: [[0, 0], [1, 1], [2, 2]],
+    4: [[0, 0], [2, 0], [0, 2], [2, 2]],
+    5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]],
+    6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]]
+  };
+
+  function dotsForHalf(num, cx, cy, halfSize) {
+    const dots = dotMap[num] || [];
+    const spacing = halfSize * 0.6;
+    const r = halfSize * 0.1;
+    return dots.map(([dx, dy]) => {
+      const x = cx + (dx - 1) * spacing;
+      const y = cy + (dy - 1) * spacing;
+      return `<circle cx="${x}" cy="${y}" r="${r}" fill="${'var(--tile-dot)'}"/>`;
+    }).join('');
+  }
+
+  let svg;
+  if (horizontal) {
+    const half = w / 2;
+    const cy = h / 2;
+    svg = `
+      <svg class="domino-tile" width="${sw}" height="${sh}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="3" ry="3" fill="var(--tile-face)" stroke="var(--tile-border)" stroke-width="0.8"/>
+        <line x1="${half}" y1="2" x2="${half}" y2="${h - 2}" stroke="var(--tile-border)" stroke-width="0.6"/>
+        ${dotsForHalf(a, half / 2, cy, half)}
+        ${dotsForHalf(b, half + half / 2, cy, half)}
+      </svg>`;
+  } else {
+    const half = h / 2;
+    const cx = w / 2;
+    svg = `
+      <svg class="domino-tile" width="${sw}" height="${sh}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="3" ry="3" fill="var(--tile-face)" stroke="var(--tile-border)" stroke-width="0.8"/>
+        <line x1="2" y1="${half}" x2="${w - 2}" y2="${half}" stroke="var(--tile-border)" stroke-width="0.6"/>
+        ${dotsForHalf(a, cx, half / 2, half)}
+        ${dotsForHalf(b, cx, half + half / 2, half)}
+      </svg>`;
+  }
+
+  return svg;
+}
+
+/*═══════════════════════════════════════════════════════════════
+  HAND RENDERING & TILE INTERACTION
+═══════════════════════════════════════════════════════════════*/
+function renderHand(gs, isMyTurn) {
+  const container = document.getElementById('handTiles');
+  const myHand = gs.hands[currentUser.uid] || [];
+  document.getElementById('handLabel').textContent = `Tus fichas (${myHand.length})`;
+
+  container.innerHTML = myHand.map(tid => {
+    const tile = parseTile(tid);
+    const playable = isMyTurn && gs.status === 'playing' && canPlayTile(tile, gs);
+    return `
+      <div class="hand-tile ${playable ? 'playable' : ''} ${selectedTile === tid ? 'selected' : ''}"
+           onclick="${playable ? `selectTile('${tid}')` : ''}"
+           data-tile="${tid}">
+        ${createTileSVG(tile.a, tile.b, true, true, 1.4)}
+      </div>`;
+  }).join('');
+}
+
+function parseTile(id) {
+  const [a, b] = id.split('-').map(Number);
+  return { a, b, id };
+}
+
+function canPlayTile(tile, gs) {
+  if (gs.board.length === 0) {
+    // First play must be double-6
+    if (gs.handNumber === 1 || !gs.handNumber) {
+      return tile.a === 6 && tile.b === 6;
+    }
+    return true; // Subsequent hands, any tile
+  }
+  return tile.a === gs.leftEnd || tile.b === gs.leftEnd ||
+         tile.a === gs.rightEnd || tile.b === gs.rightEnd;
+}
+
+function selectTile(tid) {
+  if (!gameState || gameState.currentTurn !== currentUser.uid) return;
+
+  const tile = parseTile(tid);
+  const gs = gameState;
+
+  if (gs.board.length === 0) {
+    // First tile placement - just play it
+    playTile(tid, 'right');
+    return;
+  }
+
+  const canLeft = tile.a === gs.leftEnd || tile.b === gs.leftEnd;
+  const canRight = tile.a === gs.rightEnd || tile.b === gs.rightEnd;
+
+  if (canLeft && canRight && gs.leftEnd !== gs.rightEnd) {
+    // Can play on both sides - show choice
+    selectedTile = tid;
+    renderHand(gs, true);
+    showSideChoice(tid);
+  } else if (canLeft) {
+    playTile(tid, 'left');
+  } else if (canRight) {
+    playTile(tid, 'right');
+  }
+}
+
+function showSideChoice(tid) {
+  const existing = document.getElementById('sideChoiceModal');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'sideChoiceModal';
+  overlay.innerHTML = `
+    <div class="modal" style="text-align:center;">
+      <h3>¿Dónde jugar?</h3>
+      <p style="color:var(--text-secondary);margin-bottom:20px;font-size:0.9rem;">
+        Izquierda: ${gameState.leftEnd} &nbsp;|&nbsp; Derecha: ${gameState.rightEnd}
+      </p>
+      <div style="display:flex;gap:12px;">
+        <button class="btn btn-primary" style="flex:1" onclick="document.getElementById('sideChoiceModal').remove(); playTile('${tid}','left');">
+          ◀ Izquierda
+        </button>
+        <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('sideChoiceModal').remove(); playTile('${tid}','right');">
+          Derecha ▶
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function playTile(tid, side) {
+  selectedTile = null;
+  const gs = gameState;
+  if (gs.currentTurn !== currentUser.uid || gs.status !== 'playing') return;
+
+  const tile = parseTile(tid);
+  const myHand = [...gs.hands[currentUser.uid]];
+  const tileIdx = myHand.indexOf(tid);
+  if (tileIdx === -1) return;
+  myHand.splice(tileIdx, 1);
+
+  // Determine orientation: which value connects
+  let placedA = tile.a, placedB = tile.b;
+
+  if (gs.board.length === 0) {
+    // First tile
+  } else if (side === 'left') {
+    // The connecting value must face the left end
+    if (tile.b === gs.leftEnd) {
+      placedA = tile.a; placedB = tile.b; // b connects to left
+    } else {
+      placedA = tile.b; placedB = tile.a; // a connects to left, swap
+    }
+  } else {
+    // Right side: connecting value faces right end
+    if (tile.a === gs.rightEnd) {
+      placedA = tile.a; placedB = tile.b; // a connects
+    } else {
+      placedA = tile.b; placedB = tile.a;
+    }
+  }
+
+  // New board entry
+  const boardEntry = { a: placedA, b: placedB, side: side, playedBy: currentUser.uid };
+
+  // Calculate new ends
+  let newLeftEnd = gs.leftEnd;
+  let newRightEnd = gs.rightEnd;
+
+  if (gs.board.length === 0) {
+    newLeftEnd = placedA;
+    newRightEnd = placedB;
+  } else if (side === 'left') {
+    newLeftEnd = (placedB === gs.leftEnd) ? placedA : placedB;
+  } else {
+    newRightEnd = (placedA === gs.rightEnd) ? placedB : placedA;
+  }
+
+  // Next turn (counter-clockwise: seats go 0->3->2->1->0)
+  const turnOrder = gs.turnOrder;
+  const myIdx = turnOrder.indexOf(currentUser.uid);
+  const nextIdx = (myIdx + 1) % 4;
+  const nextPlayer = turnOrder[nextIdx];
+
+  const updates = {
+    board: [...gs.board, boardEntry],
+    leftEnd: newLeftEnd,
+    rightEnd: newRightEnd,
+    [`hands.${currentUser.uid}`]: myHand,
+    currentTurn: nextPlayer,
+    consecutivePasses: 0,
+    lastMove: {
+      player: currentUser.uid,
+      tile: tid,
+      side: side,
+      timestamp: Date.now()
+    },
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  // Check if player won (dominó)
+  if (myHand.length === 0) {
+    updates.status = 'hand_won';
+    updates.handWinner = currentUser.uid;
+  }
+
+  try {
+    await db.collection('games').doc(currentRoomId).update(updates);
+
+    if (myHand.length === 0) {
+      await resolveHandEnd('domino', currentUser.uid);
+    }
+  } catch (e) {
+    showToast('Error al jugar ficha: ' + e.message, 'error');
+  }
+}
+
+async function passTurn() {
+  const gs = gameState;
+  if (gs.currentTurn !== currentUser.uid || gs.status !== 'playing') return;
+
+  const turnOrder = gs.turnOrder;
+  const myIdx = turnOrder.indexOf(currentUser.uid);
+  const nextIdx = (myIdx + 1) % 4;
+  const nextPlayer = turnOrder[nextIdx];
+
+  const newConsecutive = gs.consecutivePasses + 1;
+
+  const updates = {
+    currentTurn: nextPlayer,
+    consecutivePasses: newConsecutive,
+    lastMove: {
+      player: currentUser.uid,
+      action: 'pass',
+      timestamp: Date.now()
+    },
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  // If all 4 players pass = trancado (locked)
+  if (newConsecutive >= 4) {
+    updates.status = 'trancado';
+  }
+
+  try {
+    await db.collection('games').doc(currentRoomId).update(updates);
+
+    if (newConsecutive >= 4) {
+      await resolveHandEnd('trancado');
+    }
+  } catch (e) {
+    showToast('Error al pasar turno: ' + e.message, 'error');
+  }
+}
+
+async function resolveHandEnd(reason, winnerId = null) {
+  const gs = (await db.collection('games').doc(currentRoomId).get()).data();
+  if (!gs) return;
+
+  let pointsA = 0, pointsB = 0;
+
+  if (reason === 'domino') {
+    // Winner's team gets points from opposing team's remaining tiles
+    const winnerTeam = gs.teamMap[winnerId];
+    const losingTeam = winnerTeam === 'A' ? 'B' : 'A';
+
+    for (const uid of Object.keys(gs.hands)) {
+      if (gs.teamMap[uid] !== winnerTeam) {
+        const handPoints = gs.hands[uid].reduce((sum, tid) => {
+          const t = parseTile(tid);
+          return sum + t.a + t.b;
+        }, 0);
+        if (winnerTeam === 'A') pointsA += handPoints;
+        else pointsB += handPoints;
+      }
+    }
+  } else {
+    // Trancado: team with fewer total points wins; gets opponent's total
+    let totalA = 0, totalB = 0;
+    for (const uid of Object.keys(gs.hands)) {
+      const handPoints = gs.hands[uid].reduce((sum, tid) => {
+        const t = parseTile(tid);
+        return sum + t.a + t.b;
+      }, 0);
+      if (gs.teamMap[uid] === 'A') totalA += handPoints;
+      else totalB += handPoints;
+    }
+
+    if (totalA < totalB) {
+      pointsA = totalB; // Team A wins, gets B's points
+    } else if (totalB < totalA) {
+      pointsB = totalA; // Team B wins, gets A's points
+    }
+    // If tied, no points awarded
+  }
+
+  const newScores = {
+    A: gs.scores.A + pointsA,
+    B: gs.scores.B + pointsB
+  };
+
+  // Check if game is won
+  let gameWinner = null;
+  if (newScores.A >= gs.targetScore) gameWinner = 'A';
+  else if (newScores.B >= gs.targetScore) gameWinner = 'B';
+
+  if (gameWinner) {
+    await db.collection('games').doc(currentRoomId).update({
+      scores: newScores,
+      status: 'finished',
+      winner: gameWinner
+    });
+
+    // Send system chat message
+    await db.collection('chats').doc(currentRoomId).collection('messages').add({
+      text: `🏆 ¡Pareja ${gameWinner} gana la partida con ${newScores[gameWinner]} puntos!`,
+      system: true,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    showGameOverModal(gameWinner, newScores);
+  } else {
+    // Show hand summary and start new hand
+    const reasonText = reason === 'domino' ? '¡Dominó!' : '¡Trancado!';
+    await db.collection('chats').doc(currentRoomId).collection('messages').add({
+      text: `${reasonText} — Pareja A: +${pointsA} pts | Pareja B: +${pointsB} pts`,
+      system: true,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await db.collection('games').doc(currentRoomId).update({ scores: newScores });
+    showToast(`${reasonText} A:${newScores.A} | B:${newScores.B}`, 'info');
+
+    // Host starts new hand after a delay
+    if (currentRoom.hostUid === currentUser.uid) {
+      setTimeout(() => startNewHand(false), 3000);
+    }
+  }
+}
+
+function showGameOverModal(winner, scores) {
+  const existing = document.getElementById('gameOverModal');
+  if (existing) existing.remove();
+
+  const myTeam = gameState.teamMap[currentUser.uid];
+  const iWon = myTeam === winner;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'gameOverModal';
+  overlay.innerHTML = `
+    <div class="modal" style="text-align:center;">
+      <h3 style="font-size:1.8rem;margin-bottom:8px;">${iWon ? '🎉 ¡Ganaste!' : '😔 Perdiste'}</h3>
+      <p style="color:var(--text-secondary);margin-bottom:20px;">
+        Pareja ${winner} gana la partida
+      </p>
+      <div style="display:flex;justify-content:center;gap:30px;margin-bottom:24px;">
+        <div>
+          <div style="font-size:2rem;font-weight:900;color:var(--accent);">${scores.A}</div>
+          <div style="font-size:0.85rem;color:var(--text-secondary);">Pareja A</div>
+        </div>
+        <div>
+          <div style="font-size:2rem;font-weight:900;color:var(--blue);">${scores.B}</div>
+          <div style="font-size:0.85rem;color:var(--text-secondary);">Pareja B</div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="document.getElementById('gameOverModal').remove(); backToLobby();">
+        Volver al Lobby
+      </button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+/*═══════════════════════════════════════════════════════════════
+  CHAT MODULE
+═══════════════════════════════════════════════════════════════*/
+function toggleChat() {
+  document.getElementById('chatPanel').classList.toggle('open');
+}
+
+function listenChat() {
+  if (unsubChat) unsubChat();
+  if (!currentRoomId) return;
+
+  const chatRef = db.collection('chats').doc(currentRoomId).collection('messages')
+    .orderBy('timestamp', 'asc')
+    .limitToLast(100);
+
+  unsubChat = chatRef.onSnapshot(snap => {
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = '';
+    snap.docs.forEach(doc => {
+      const msg = doc.data();
+      const div = document.createElement('div');
+      div.className = `chat-msg ${msg.system ? 'system' : ''}`;
+
+      if (msg.system) {
+        div.innerHTML = `<div class="msg-text">${escapeHtml(msg.text)}</div>`;
+      } else {
+        const time = msg.timestamp ? new Date(msg.timestamp.toMillis()).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) : '';
+        div.innerHTML = `
+          <div class="msg-author">${escapeHtml(msg.authorName || 'Anónimo')}</div>
+          <div class="msg-text">${escapeHtml(msg.text)}</div>
+          <div class="msg-time">${time}</div>`;
+      }
+      container.appendChild(div);
+    });
+    container.scrollTop = container.scrollHeight;
+  });
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || !currentRoomId) return;
+  input.value = '';
+
+  try {
+    await db.collection('chats').doc(currentRoomId).collection('messages').add({
+      text: text,
+      authorUid: currentUser.uid,
+      authorName: currentUser.name,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    showToast('Error al enviar mensaje', 'error');
+  }
+}
+
+/*═══════════════════════════════════════════════════════════════
+  NAVIGATION & CLEANUP
+═══════════════════════════════════════════════════════════════*/
+async function leaveRoom() {
+  if (!currentRoomId) { backToLobby(); return; }
+
+  try {
+    const roomRef = db.collection('rooms').doc(currentRoomId);
+    const roomSnap = await roomRef.get();
+    if (roomSnap.exists) {
+      const data = roomSnap.data();
+      const updatedPlayers = data.players.filter(p => p.uid !== currentUser.uid);
+
+      if (updatedPlayers.length === 0) {
+        await roomRef.delete();
+        // Also clean up game and chat
+        try { await db.collection('games').doc(currentRoomId).delete(); } catch(e) {}
+      } else {
+        const updates = { players: updatedPlayers };
+        if (data.hostUid === currentUser.uid) {
+          updates.hostUid = updatedPlayers[0].uid;
+        }
+        await roomRef.update(updates);
+      }
+    }
+  } catch (e) {
+    console.error('Leave room error:', e);
+  }
+
+  backToLobby();
+}
+
+function backToLobby() {
+  cleanupGameListeners();
+  currentRoomId = null;
+  currentRoom = null;
+  gameState = null;
+  selectedTile = null;
+  showScreen('lobbyScreen');
+}
+
+function cleanupGameListeners() {
+  if (unsubRoom) { unsubRoom(); unsubRoom = null; }
+  if (unsubGame) { unsubGame(); unsubGame = null; }
+  if (unsubChat) { unsubChat(); unsubChat = null; }
+}
+
+function cleanupListeners() {
+  cleanupGameListeners();
+  if (unsubRooms) { unsubRooms(); unsubRooms = null; }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/*═══════════════════════════════════════════════════════════════
+  ENTER KEY SUPPORT FOR AUTH
+═══════════════════════════════════════════════════════════════*/
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleLogin();
+});
+document.getElementById('regPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleRegister();
+});
+
+// Prevent zoom on double tap for mobile
+document.addEventListener('dblclick', e => e.preventDefault());
+
+console.log('🎲 Dominó Venezolano Online — Listo');
+</script>
+</body>
+</html>
