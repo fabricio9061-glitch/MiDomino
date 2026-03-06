@@ -494,6 +494,44 @@ a { color: var(--accent); text-decoration: none; }
 }
 .bot-thinking.active { display: flex; align-items: center; gap: 8px; }
 
+/* Hand reveal overlay */
+.reveal-overlay {
+  position: fixed; inset: 0; background: rgba(6,12,24,0.88);
+  z-index: 900; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 16px; animation: fadeIn 0.4s ease;
+  backdrop-filter: blur(6px);
+}
+.reveal-title {
+  font-family: var(--font-display); font-size: 1.4rem; font-weight: 900;
+  margin-bottom: 6px; text-align: center;
+}
+.reveal-subtitle { color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 18px; text-align: center; }
+.reveal-scores { display: flex; gap: 24px; justify-content: center; margin-bottom: 18px; }
+.reveal-scores .rs-team { text-align: center; }
+.reveal-scores .rs-val { font-family: var(--font-display); font-size: 1.5rem; font-weight: 900; }
+.reveal-scores .rs-label { font-size: 0.75rem; color: var(--text-secondary); }
+.reveal-players {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  width: 100%; max-width: 440px;
+}
+.reveal-player {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; text-align: center;
+}
+.reveal-player.winner { border-color: var(--green); background: rgba(46,204,113,0.08); }
+.reveal-player .rp-name { font-weight: 700; font-size: 0.88rem; margin-bottom: 6px; }
+.reveal-player .rp-tiles {
+  display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; min-height: 32px; align-items: center;
+}
+.reveal-player .rp-pts { font-size: 0.78rem; color: var(--text-secondary); margin-top: 6px; }
+.reveal-player .rp-empty { color: var(--green); font-weight: 700; font-size: 0.82rem; }
+@keyframes revealSlide { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.reveal-player { animation: revealSlide 0.4s ease backwards; }
+.reveal-player:nth-child(1) { animation-delay: 0.1s; }
+.reveal-player:nth-child(2) { animation-delay: 0.25s; }
+.reveal-player:nth-child(3) { animation-delay: 0.4s; }
+.reveal-player:nth-child(4) { animation-delay: 0.55s; }
+
 /*──────────────────────────────────────────────
   RESPONSIVE
 ──────────────────────────────────────────────*/
@@ -1070,13 +1108,14 @@ function renderOpponents(gs, mySeat) {
 }
 
 const TILE_W = 30, TILE_H = 60, GAP = 4;
+var ROW_SP = TILE_H + 14; /* vertical space between snake rows */
 
 /*═══════════════════════════════════════════════════════════════
   renderBoard — Auto-fit + endpoint tap zones
 ═══════════════════════════════════════════════════════════════*/
 function renderBoard(gs) {
-  const container = document.getElementById('boardContainer');
-  const wrapper   = document.getElementById('boardWrapper');
+  var container = document.getElementById('boardContainer');
+  var wrapper   = document.getElementById('boardWrapper');
   container.innerHTML = '';
   container.style.transform = '';
   container.style.width = ''; container.style.height = '';
@@ -1089,31 +1128,29 @@ function renderBoard(gs) {
     return;
   }
 
-  const wrapW = wrapper.clientWidth;
-  const wrapH = wrapper.clientHeight;
-  const turnDist = Math.max(180, Math.min(wrapW, wrapH) * 0.9);
-  const layout = calculateBoardLayout(gs.board, turnDist);
+  var wrapW = wrapper.clientWidth;
+  var wrapH = wrapper.clientHeight;
+  var layout = calculateBoardLayout(gs.board, wrapW);
 
   /* Bounding box */
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  layout.forEach(it => {
-    const w = it.horizontal ? TILE_H : TILE_W;
-    const h = it.horizontal ? TILE_W : TILE_H;
+  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  layout.forEach(function(it) {
+    var w = it.horizontal ? TILE_H : TILE_W;
+    var h = it.horizontal ? TILE_W : TILE_H;
     minX = Math.min(minX, it.x); minY = Math.min(minY, it.y);
     maxX = Math.max(maxX, it.x + w); maxY = Math.max(maxY, it.y + h);
   });
 
-  const PAD = 20;
-  const boardW = (maxX - minX) + PAD * 2;
-  const boardH = (maxY - minY) + PAD * 2;
+  var PAD = 16;
+  var boardW = (maxX - minX) + PAD * 2;
+  var boardH = (maxY - minY) + PAD * 2;
 
   container.style.width  = boardW + 'px';
   container.style.height = boardH + 'px';
   container.style.position = 'absolute';
 
-  /* Place tiles */
-  layout.forEach(it => {
-    const d = document.createElement('div');
+  layout.forEach(function(it) {
+    var d = document.createElement('div');
     d.className = 'board-tile';
     d.style.left = (it.x - minX + PAD) + 'px';
     d.style.top  = (it.y - minY + PAD) + 'px';
@@ -1123,42 +1160,37 @@ function renderBoard(gs) {
 
   /* Endpoint tap zones when a tile is selected */
   if (selectedTile && gs.status === 'playing') {
-    const tile = parseTile(selectedTile);
-    const canL = tile.a === gs.leftEnd || tile.b === gs.leftEnd;
-    const canR = tile.a === gs.rightEnd || tile.b === gs.rightEnd;
-    const epSize = 44;
-
-    if (canL && layout._leftEndpoint) {
-      const ep = layout._leftEndpoint;
-      const d = document.createElement('div');
-      d.className = 'board-endpoint';
-      d.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
-      d.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
-      d.style.width = epSize + 'px'; d.style.height = epSize + 'px';
-      d.innerHTML = '<div class="ep-zone">◀</div>';
-      d.onclick = function() { playTile(selectedTile, 'left'); };
-      container.appendChild(d);
+    var tile = parseTile(selectedTile);
+    var canL = tile.a === gs.leftEnd || tile.b === gs.leftEnd;
+    var canR = tile.a === gs.rightEnd || tile.b === gs.rightEnd;
+    var epSize = 44;
+    if (canL && layout._leftEP) {
+      var ep = layout._leftEP;
+      var d1 = document.createElement('div'); d1.className = 'board-endpoint';
+      d1.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
+      d1.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
+      d1.style.width = epSize + 'px'; d1.style.height = epSize + 'px';
+      d1.innerHTML = '<div class="ep-zone">\u25C0</div>';
+      d1.onclick = function() { playTile(selectedTile, 'left'); };
+      container.appendChild(d1);
     }
-    if (canR && layout._rightEndpoint) {
-      const ep = layout._rightEndpoint;
-      const d = document.createElement('div');
-      d.className = 'board-endpoint';
-      d.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
-      d.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
-      d.style.width = epSize + 'px'; d.style.height = epSize + 'px';
-      d.innerHTML = '<div class="ep-zone">▶</div>';
-      d.onclick = function() { playTile(selectedTile, 'right'); };
-      container.appendChild(d);
+    if (canR && layout._rightEP) {
+      var ep2 = layout._rightEP;
+      var d2 = document.createElement('div'); d2.className = 'board-endpoint';
+      d2.style.left = (ep2.x - minX + PAD - epSize/2) + 'px';
+      d2.style.top  = (ep2.y - minY + PAD - epSize/2) + 'px';
+      d2.style.width = epSize + 'px'; d2.style.height = epSize + 'px';
+      d2.innerHTML = '<div class="ep-zone">\u25B6</div>';
+      d2.onclick = function() { playTile(selectedTile, 'right'); };
+      container.appendChild(d2);
     }
   }
 
   /* Auto-scale to fit */
-  const availW = Math.max(80, wrapW - 12);
-  const availH = Math.max(80, wrapH - 12);
-  const scale  = Math.min(availW / boardW, availH / boardH, 1.6);
-  const scaledW = boardW * scale;
-  const scaledH = boardH * scale;
-
+  var availW = Math.max(80, wrapW - 10);
+  var availH = Math.max(80, wrapH - 10);
+  var scale  = Math.min(availW / boardW, availH / boardH, 1.6);
+  var scaledW = boardW * scale, scaledH = boardH * scale;
   container.style.transformOrigin = '0 0';
   container.style.transform = 'scale(' + scale.toFixed(4) + ')';
   container.style.left = ((wrapW - scaledW) / 2) + 'px';
@@ -1166,153 +1198,153 @@ function renderBoard(gs) {
 }
 
 /*═══════════════════════════════════════════════════════════════
-  calculateBoardLayout — Rewritten with proper cursor tracking
-  
-  Each chain tracks a "cursor" — the exact point where the next
-  tile's connecting edge should be placed — and a direction.
-  
-  Tile orientations by chain direction:
-    Horizontal chain (right/left): normal tiles horizontal (60×30),
-      doubles perpendicular vertical (30×60)
-    Vertical chain (down/up): normal tiles vertical (30×60),
-      doubles perpendicular horizontal (60×30)
+  calculateBoardLayout — Clean horizontal snake
+
+  The chain always runs horizontally. When it reaches the edge
+  of its band, it drops down and reverses direction, creating a
+  clean serpentine pattern. Each chain (right and left) snakes
+  independently within its own half of the board.
 ═══════════════════════════════════════════════════════════════*/
-function calculateBoardLayout(board, turnDist) {
+function calculateBoardLayout(board, viewportW) {
   if (!board || board.length === 0) return [];
-  if (!turnDist) turnDist = 200;
 
-  const layout = [];
-  const CX = 500, CY = 400; /* arbitrary origin — gets normalized in renderBoard */
+  var halfW = Math.max(160, Math.min(380, (viewportW || 700) * 0.6));
+  var layout = [];
+  var CX = 600, CY = 100;
 
-  /* === First tile (often cochina / double-six) === */
-  const f = board[0];
-  const fIsD = f.a === f.b;
-
+  var f = board[0], fIsD = f.a === f.b;
+  var firstHalfW;
   if (fIsD) {
-    /* Double: placed vertically (30×60), chain expands horizontally from center */
-    layout.push({ ...f, x: CX - TILE_W/2, y: CY - TILE_H/2, horizontal: false });
-    /* Right chain cursor: right edge center of the double */
-    var rCursor = { x: CX + TILE_W/2 + GAP, y: CY };
-    /* Left chain cursor: left edge center of the double */
-    var lCursor = { x: CX - TILE_W/2 - GAP, y: CY };
+    layout.push({ a:f.a, b:f.b, side:f.side, playedBy:f.playedBy,
+      x: CX - TILE_W/2, y: CY - TILE_H/2, horizontal: false });
+    firstHalfW = TILE_W / 2;
   } else {
-    /* Normal: placed horizontally (60×30) */
-    layout.push({ ...f, x: CX - TILE_H/2, y: CY - TILE_W/2, horizontal: true });
-    var rCursor = { x: CX + TILE_H/2 + GAP, y: CY };
-    var lCursor = { x: CX - TILE_H/2 - GAP, y: CY };
+    layout.push({ a:f.a, b:f.b, side:f.side, playedBy:f.playedBy,
+      x: CX - TILE_H/2, y: CY - TILE_W/2, horizontal: true });
+    firstHalfW = TILE_H / 2;
   }
 
-  var rDir = 'right', lDir = 'left';
-  var rTurns = 0, lTurns = 0;
-  /* Track distance from origin in current direction to know when to turn */
-  var rDistFromTurn = 0, lDistFromTurn = 0;
-
+  var rightTiles = [], leftTiles = [];
   for (var i = 1; i < board.length; i++) {
-    var t = board[i], side = t.side, isD = t.a === t.b;
-
-    if (side === 'right') {
-      var result = advanceAndPlace(t, rCursor, rDir, isD, CX, CY, turnDist, rTurns, rDistFromTurn);
-      layout.push(result.placed);
-      rCursor = result.cursor;
-      if (result.turned) { rTurns++; rDistFromTurn = 0; }
-      rDir = result.dir;
-      rDistFromTurn = result.dist;
-    } else {
-      var result = advanceAndPlace(t, lCursor, lDir, isD, CX, CY, turnDist, lTurns, lDistFromTurn);
-      layout.push(result.placed);
-      lCursor = result.cursor;
-      if (result.turned) { lTurns++; lDistFromTurn = 0; }
-      lDir = result.dir;
-      lDistFromTurn = result.dist;
-    }
+    if (board[i].side === 'right') rightTiles.push(board[i]);
+    else leftTiles.push(board[i]);
   }
 
-  /* Attach endpoint positions for tap zones */
-  layout._leftEndpoint = lCursor;
-  layout._rightEndpoint = rCursor;
+  var rightStart = CX + firstHalfW + GAP;
+  var rr = snakeChain(rightTiles, rightStart, CY, 1, rightStart, rightStart + halfW);
+  layout.push.apply(layout, rr.placed);
 
+  var leftStart = CX - firstHalfW - GAP;
+  var lr = snakeChain(leftTiles, leftStart, CY, -1, leftStart - halfW, leftStart);
+  layout.push.apply(layout, lr.placed);
+
+  layout._rightEP = rr.endpoint;
+  layout._leftEP  = lr.endpoint;
   return layout;
 }
 
 /*
-  advanceAndPlace: places a tile at the cursor position in the given direction,
-  returns the new cursor position and whether a turn occurred.
-  
-  cursor = {x, y} — the center-point of the connecting edge
-  dir = 'right'|'left'|'down'|'up'
-  isD = is double (perpendicular to chain)
+  snakeChain — Place tiles in a clean horizontal serpentine.
 */
-function advanceAndPlace(tile, cursor, dir, isD, cx, cy, turnDist, turnCount, distFromTurn) {
-  var placed, newCursor, newDir = dir, turned = false, tileDim;
+function snakeChain(tiles, startCx, startCy, startDir, leftBound, rightBound) {
+  var placed = [];
+  var cx = startCx, cy = startCy, dir = startDir;
 
-  if (dir === 'right') {
-    if (isD) {
-      /* Double: vertical tile (30×60) centered on spine */
-      placed = { ...tile, x: cursor.x, y: cursor.y - TILE_H/2, horizontal: false };
-      tileDim = TILE_W;
-    } else {
-      /* Normal: horizontal tile (60×30) */
-      placed = { ...tile, x: cursor.x, y: cursor.y - TILE_W/2, horizontal: true };
-      tileDim = TILE_H;
-    }
-    newCursor = { x: cursor.x + tileDim + GAP, y: cursor.y };
-  }
-  else if (dir === 'left') {
-    if (isD) {
-      placed = { ...tile, x: cursor.x - TILE_W, y: cursor.y - TILE_H/2, horizontal: false };
-      tileDim = TILE_W;
-    } else {
-      placed = { ...tile, x: cursor.x - TILE_H, y: cursor.y - TILE_W/2, horizontal: true };
-      tileDim = TILE_H;
-    }
-    newCursor = { x: cursor.x - tileDim - GAP, y: cursor.y };
-  }
-  else if (dir === 'down') {
-    if (isD) {
-      /* Double: horizontal tile (60×30) centered on spine */
-      placed = { ...tile, x: cursor.x - TILE_H/2, y: cursor.y, horizontal: true };
-      tileDim = TILE_W;
-    } else {
-      /* Normal: vertical tile (30×60) */
-      placed = { ...tile, x: cursor.x - TILE_W/2, y: cursor.y, horizontal: false };
-      tileDim = TILE_H;
-    }
-    newCursor = { x: cursor.x, y: cursor.y + tileDim + GAP };
-  }
-  else { /* up */
-    if (isD) {
-      placed = { ...tile, x: cursor.x - TILE_H/2, y: cursor.y - TILE_W, horizontal: true };
-      tileDim = TILE_W;
-    } else {
-      placed = { ...tile, x: cursor.x - TILE_W/2, y: cursor.y - TILE_H, horizontal: false };
-      tileDim = TILE_H;
-    }
-    newCursor = { x: cursor.x, y: cursor.y - tileDim - GAP };
-  }
+  for (var i = 0; i < tiles.length; i++) {
+    var t = tiles[i], isD = t.a === t.b;
+    var dim = isD ? TILE_W : TILE_H;
 
-  /* Check if we need to turn — max 3 turns per chain to prevent spiral self-overlap */
-  var newDist = distFromTurn + tileDim + GAP;
-  if (newDist >= turnDist && turnCount < 3) {
-    var nextDir = getNextDirection(dir);
-    /* Full-tile corner offset guarantees parallel segments never overlap */
-    var cornerOff = TILE_H + GAP;
-    if (dir === 'right')     newCursor = { x: newCursor.x, y: newCursor.y + cornerOff };
-    else if (dir === 'down') newCursor = { x: newCursor.x - cornerOff, y: newCursor.y };
-    else if (dir === 'left') newCursor = { x: newCursor.x, y: newCursor.y - cornerOff };
-    else if (dir === 'up')   newCursor = { x: newCursor.x + cornerOff, y: newCursor.y };
-    newDir = nextDir;
-    turned = true;
-    newDist = 0;
-  }
+    var wouldExceed = false;
+    if (dir === 1 && cx + dim > rightBound) wouldExceed = true;
+    if (dir === -1 && cx - dim < leftBound) wouldExceed = true;
+    if (wouldExceed && i > 0) {
+      cy += ROW_SP;
+      dir *= -1;
+    }
 
-  return { placed: placed, cursor: newCursor, dir: newDir, turned: turned, dist: newDist };
+    if (dir === 1) {
+      if (isD) {
+        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
+          x: cx, y: cy - TILE_H/2, horizontal: false });
+        cx += TILE_W + GAP;
+      } else {
+        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
+          x: cx, y: cy - TILE_W/2, horizontal: true });
+        cx += TILE_H + GAP;
+      }
+    } else {
+      if (isD) {
+        cx -= TILE_W;
+        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
+          x: cx, y: cy - TILE_H/2, horizontal: false });
+        cx -= GAP;
+      } else {
+        cx -= TILE_H;
+        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
+          x: cx, y: cy - TILE_W/2, horizontal: true });
+        cx -= GAP;
+      }
+    }
+  }
+  return { placed: placed, endpoint: { x: cx, y: cy } };
 }
 
-/* Clockwise turn: right→down→left→up→right for right chain
-   Counter-clockwise: left→up→right→down→left for left chain */
-function getNextDirection(dir) {
-  var map = { right: 'down', down: 'left', left: 'up', up: 'right' };
-  return map[dir] || 'right';
+/*═══════════════════════════════════════════════════════════════
+  showHandReveal — End-of-hand reveal animation
+  Shows each player's remaining tiles for a few seconds.
+═══════════════════════════════════════════════════════════════*/
+function showHandReveal(gs, reason, pointsA, pointsB, callback) {
+  var existing = document.getElementById('revealOverlay');
+  if (existing) existing.remove();
+
+  var myUid = currentUser ? currentUser.uid : 'player';
+  var winnerUid = gs.handWinner || null;
+  var reasonText = reason === 'domino' ? '\uD83C\uDFB2 \u00A1Domin\u00F3!' : '\uD83D\uDD12 \u00A1Trancado!';
+
+  var playersHtml = '';
+  if (currentRoom && currentRoom.players) {
+    currentRoom.players.forEach(function(p) {
+      var hand = gs.hands[p.uid] || [];
+      var pts = hand.reduce(function(s, tid) { var t = parseTile(tid); return s + t.a + t.b; }, 0);
+      var isEmpty = hand.length === 0;
+      var isWinner = p.uid === winnerUid;
+      var tilesHtml = isEmpty
+        ? '<div class="rp-empty">\u2714 \u00A1Domin\u00F3!</div>'
+        : hand.map(function(tid) {
+            var t = parseTile(tid);
+            return createTileSVG(t.a, t.b, true, false, 0.9);
+          }).join('');
+
+      playersHtml += '<div class="reveal-player ' + (isWinner ? 'winner' : '') + '">'
+        + '<div class="rp-name" style="color:' + (p.team === 'A' ? 'var(--accent)' : 'var(--blue)') + ';">'
+        + escapeHtml(p.name) + (p.uid === myUid ? ' (T\u00FA)' : '') + '</div>'
+        + '<div class="rp-tiles">' + tilesHtml + '</div>'
+        + (isEmpty ? '' : '<div class="rp-pts">' + pts + ' puntos</div>')
+        + '</div>';
+    });
+  }
+
+  var overlay = document.createElement('div');
+  overlay.className = 'reveal-overlay';
+  overlay.id = 'revealOverlay';
+  overlay.innerHTML = '<div class="reveal-title">' + reasonText + '</div>'
+    + '<div class="reveal-subtitle">Fichas restantes de cada jugador</div>'
+    + '<div class="reveal-scores">'
+    + '<div class="rs-team"><div class="rs-val" style="color:var(--accent);">+' + pointsA + '</div><div class="rs-label">Pareja A</div></div>'
+    + '<div class="rs-team"><div class="rs-val" style="color:var(--blue);">+' + pointsB + '</div><div class="rs-label">Pareja B</div></div>'
+    + '</div>'
+    + '<div class="reveal-players">' + playersHtml + '</div>';
+  document.body.appendChild(overlay);
+
+  setTimeout(function() {
+    var el = document.getElementById('revealOverlay');
+    if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.5s'; }
+    setTimeout(function() {
+      var el2 = document.getElementById('revealOverlay');
+      if (el2) el2.remove();
+      if (callback) callback();
+    }, 500);
+  }, 4000);
 }
 
 /*═══════════════════════════════════════════════════════════════
@@ -1513,18 +1545,22 @@ async function resolveHandEnd(reason,winnerId=null){
     for(const uid of Object.keys(gs.hands)){if(gs.teamMap[uid]!==wt){const hp=gs.hands[uid].reduce((s,tid)=>{const t=parseTile(tid);return s+t.a+t.b;},0);if(wt==='A')pA+=hp;else pB+=hp;}}
   }else{let tA=0,tB=0;for(const uid of Object.keys(gs.hands)){const hp=gs.hands[uid].reduce((s,tid)=>{const t=parseTile(tid);return s+t.a+t.b;},0);if(gs.teamMap[uid]==='A')tA+=hp;else tB+=hp;}
     if(tA<tB)pA=tB;else if(tB<tA)pB=tA;}
-  const ns={A:gs.scores.A+pA,B:gs.scores.B+pB};let gw=null;
-  if(ns.A>=gs.targetScore)gw='A';else if(ns.B>=gs.targetScore)gw='B';
-  if(gw){
-    await db.collection('games').doc(currentRoomId).update({scores:ns,status:'finished',winner:gw});
-    await db.collection('chats').doc(currentRoomId).collection('messages').add({text:`🏆 ¡Pareja ${gw} gana con ${ns[gw]} puntos!`,system:true,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
-    showGameOverModal(gw,ns);
-  }else{
-    const rt=reason==='domino'?'¡Dominó!':'¡Trancado!';
-    await db.collection('chats').doc(currentRoomId).collection('messages').add({text:`${rt} — A: +${pA} pts | B: +${pB} pts`,system:true,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
-    await db.collection('games').doc(currentRoomId).update({scores:ns});showToast(`${rt} A:${ns.A} | B:${ns.B}`,'info');
-    if(currentRoom.hostUid===currentUser.uid)setTimeout(()=>startNewHand(false),3000);
-  }
+
+  /* Show reveal overlay with current hands before clearing */
+  showHandReveal(gs, reason, pA, pB, async function() {
+    const ns={A:gs.scores.A+pA,B:gs.scores.B+pB};let gw=null;
+    if(ns.A>=gs.targetScore)gw='A';else if(ns.B>=gs.targetScore)gw='B';
+    if(gw){
+      await db.collection('games').doc(currentRoomId).update({scores:ns,status:'finished',winner:gw});
+      await db.collection('chats').doc(currentRoomId).collection('messages').add({text:`🏆 ¡Pareja ${gw} gana con ${ns[gw]} puntos!`,system:true,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
+      showGameOverModal(gw,ns);
+    }else{
+      const rt=reason==='domino'?'¡Dominó!':'¡Trancado!';
+      await db.collection('chats').doc(currentRoomId).collection('messages').add({text:`${rt} — A: +${pA} pts | B: +${pB} pts`,system:true,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
+      await db.collection('games').doc(currentRoomId).update({scores:ns});showToast(`${rt} A:${ns.A} | B:${ns.B}`,'info');
+      if(currentRoom.hostUid===currentUser.uid)setTimeout(()=>startNewHand(false),1500);
+    }
+  });
 }
 
 function showGameOverModal(w,s){
@@ -1994,50 +2030,51 @@ function spPassTurn() {
 
 /* Resolve end of a hand in single-player */
 function spResolveHandEnd(reason, winnerId) {
-  const gs = gameState;
-  let pA = 0, pB = 0;
+  var gs = gameState;
+  var pA = 0, pB = 0;
 
   if (reason === 'domino') {
     spStats.dominoes++;
-    const wt = gs.teamMap[winnerId];
-    for (const uid of Object.keys(gs.hands)) {
+    var wt = gs.teamMap[winnerId];
+    for (var uid in gs.hands) {
       if (gs.teamMap[uid] !== wt) {
-        const hp = gs.hands[uid].reduce((s, tid) => { const t = parseTile(tid); return s + t.a + t.b; }, 0);
+        var hp = gs.hands[uid].reduce(function(s, tid) { var t = parseTile(tid); return s + t.a + t.b; }, 0);
         if (wt === 'A') pA += hp; else pB += hp;
       }
     }
   } else {
     spStats.trancadas++;
-    let tA = 0, tB = 0;
-    for (const uid of Object.keys(gs.hands)) {
-      const hp = gs.hands[uid].reduce((s, tid) => { const t = parseTile(tid); return s + t.a + t.b; }, 0);
+    var tA = 0, tB = 0;
+    for (var uid in gs.hands) {
+      var hp = gs.hands[uid].reduce(function(s, tid) { var t = parseTile(tid); return s + t.a + t.b; }, 0);
       if (gs.teamMap[uid] === 'A') tA += hp; else tB += hp;
     }
     if (tA < tB) pA = tB; else if (tB < tA) pB = tA;
   }
 
-  gs.scores.A += pA;
-  gs.scores.B += pB;
+  /* Show reveal BEFORE updating scores so tiles are still visible */
+  showHandReveal(gs, reason, pA, pB, function() {
+    gs.scores.A += pA;
+    gs.scores.B += pB;
 
-  let gw = null;
-  if (gs.scores.A >= gs.targetScore) gw = 'A';
-  else if (gs.scores.B >= gs.targetScore) gw = 'B';
+    var gw = null;
+    if (gs.scores.A >= gs.targetScore) gw = 'A';
+    else if (gs.scores.B >= gs.targetScore) gw = 'B';
 
-  if (gw) {
-    gs.status = 'finished';
-    gs.winner = gw;
-    spStats.played++;
-    const myTeam = gs.teamMap[currentUser ? currentUser.uid : 'player'];
-    if (myTeam === gw) spStats.won++; else spStats.lost++;
-    saveSpStats();
-    renderGame();
-    showGameOverModal(gw, gs.scores);
-  } else {
-    const rt = reason === 'domino' ? '¡Dominó!' : '¡Trancado!';
-    showToast(`${rt} — A:${gs.scores.A} | B:${gs.scores.B}`, 'info');
-    renderGame();
-    setTimeout(() => spStartNewHand(false), 2500);
-  }
+    if (gw) {
+      gs.status = 'finished'; gs.winner = gw;
+      spStats.played++;
+      var myTeam = gs.teamMap[currentUser ? currentUser.uid : 'player'];
+      if (myTeam === gw) spStats.won++; else spStats.lost++;
+      saveSpStats();
+      renderGame();
+      showGameOverModal(gw, gs.scores);
+    } else {
+      showToast('A:' + gs.scores.A + ' | B:' + gs.scores.B, 'info');
+      renderGame();
+      setTimeout(function() { spStartNewHand(false); }, 800);
+    }
+  });
 }
 
 /*═══════════════════════════════════════════════════════════════
