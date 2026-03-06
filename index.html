@@ -1108,7 +1108,7 @@ function renderOpponents(gs, mySeat) {
 }
 
 const TILE_W = 30, TILE_H = 60, GAP = 4;
-var ROW_SP = TILE_H + 14; /* vertical space between snake rows */
+var ROW_GAP = TILE_H + 10; /* vertical space between snake rows */
 
 /*═══════════════════════════════════════════════════════════════
   renderBoard — Auto-fit + endpoint tap zones
@@ -1124,24 +1124,29 @@ function renderBoard(gs) {
   if (!gs.board || gs.board.length === 0) {
     container.style.width = '100%'; container.style.height = '100%';
     container.style.position = 'relative';
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">Esperando primera ficha...</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;' +
+      'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">Esperando primera ficha...</div>';
     return;
   }
 
   var wrapW = wrapper.clientWidth;
   var wrapH = wrapper.clientHeight;
-  var layout = calculateBoardLayout(gs.board, wrapW);
+  var result = layoutUnifiedSnake(gs.board, wrapW);
+  var layout = result.tiles;
 
   /* Bounding box */
-  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  layout.forEach(function(it) {
-    var w = it.horizontal ? TILE_H : TILE_W;
-    var h = it.horizontal ? TILE_W : TILE_H;
-    minX = Math.min(minX, it.x); minY = Math.min(minY, it.y);
-    maxX = Math.max(maxX, it.x + w); maxY = Math.max(maxY, it.y + h);
-  });
+  var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for (var i = 0; i < layout.length; i++) {
+    var it = layout[i];
+    var tw = it.horizontal ? TILE_H : TILE_W;
+    var th = it.horizontal ? TILE_W : TILE_H;
+    if (it.x < minX) minX = it.x;
+    if (it.y < minY) minY = it.y;
+    if (it.x + tw > maxX) maxX = it.x + tw;
+    if (it.y + th > maxY) maxY = it.y + th;
+  }
 
-  var PAD = 16;
+  var PAD = 14;
   var boardW = (maxX - minX) + PAD * 2;
   var boardH = (maxY - minY) + PAD * 2;
 
@@ -1149,23 +1154,25 @@ function renderBoard(gs) {
   container.style.height = boardH + 'px';
   container.style.position = 'absolute';
 
-  layout.forEach(function(it) {
+  /* Draw tiles */
+  for (var i = 0; i < layout.length; i++) {
+    var it = layout[i];
     var d = document.createElement('div');
     d.className = 'board-tile';
     d.style.left = (it.x - minX + PAD) + 'px';
     d.style.top  = (it.y - minY + PAD) + 'px';
     d.innerHTML = createTileSVG(it.a, it.b, it.horizontal, false, 1);
     container.appendChild(d);
-  });
+  }
 
   /* Endpoint tap zones when a tile is selected */
   if (selectedTile && gs.status === 'playing') {
-    var tile = parseTile(selectedTile);
-    var canL = tile.a === gs.leftEnd || tile.b === gs.leftEnd;
-    var canR = tile.a === gs.rightEnd || tile.b === gs.rightEnd;
+    var stile = parseTile(selectedTile);
+    var canL = stile.a === gs.leftEnd || stile.b === gs.leftEnd;
+    var canR = stile.a === gs.rightEnd || stile.b === gs.rightEnd;
     var epSize = 44;
-    if (canL && layout._leftEP) {
-      var ep = layout._leftEP;
+    if (canL && result.leftEP) {
+      var ep = result.leftEP;
       var d1 = document.createElement('div'); d1.className = 'board-endpoint';
       d1.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
       d1.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
@@ -1174,8 +1181,8 @@ function renderBoard(gs) {
       d1.onclick = function() { playTile(selectedTile, 'left'); };
       container.appendChild(d1);
     }
-    if (canR && layout._rightEP) {
-      var ep2 = layout._rightEP;
+    if (canR && result.rightEP) {
+      var ep2 = result.rightEP;
       var d2 = document.createElement('div'); d2.className = 'board-endpoint';
       d2.style.left = (ep2.x - minX + PAD - epSize/2) + 'px';
       d2.style.top  = (ep2.y - minY + PAD - epSize/2) + 'px';
@@ -1186,10 +1193,10 @@ function renderBoard(gs) {
     }
   }
 
-  /* Auto-scale to fit */
-  var availW = Math.max(80, wrapW - 10);
-  var availH = Math.max(80, wrapH - 10);
-  var scale  = Math.min(availW / boardW, availH / boardH, 1.6);
+  /* Auto-scale to always fit */
+  var availW = Math.max(80, wrapW - 8);
+  var availH = Math.max(80, wrapH - 8);
+  var scale  = Math.min(availW / boardW, availH / boardH, 1.5);
   var scaledW = boardW * scale, scaledH = boardH * scale;
   container.style.transformOrigin = '0 0';
   container.style.transform = 'scale(' + scale.toFixed(4) + ')';
@@ -1198,95 +1205,111 @@ function renderBoard(gs) {
 }
 
 /*═══════════════════════════════════════════════════════════════
-  calculateBoardLayout — Clean horizontal snake
-
-  The chain always runs horizontally. When it reaches the edge
-  of its band, it drops down and reverses direction, creating a
-  clean serpentine pattern. Each chain (right and left) snakes
-  independently within its own half of the board.
+  layoutUnifiedSnake — ONE continuous serpentine for all tiles
+  
+  Domino chains have a left-end and a right-end. Instead of
+  rendering them as two independent snakes, we build the FULL
+  sequence:   [...left tiles reversed] + [first tile] + [...right tiles]
+  and lay it out as a single left-to-right line that wraps into
+  clean horizontal rows, like reading text that alternates direction.
+  
+  This produces: one clear path, no forks, no disconnected halves,
+  easy to follow the entire game sequence on any screen.
 ═══════════════════════════════════════════════════════════════*/
-function calculateBoardLayout(board, viewportW) {
-  if (!board || board.length === 0) return [];
+function layoutUnifiedSnake(board, viewportW) {
+  if (!board || board.length === 0) return { tiles: [], leftEP: null, rightEP: null };
 
-  var halfW = Math.max(160, Math.min(380, (viewportW || 700) * 0.6));
-  var layout = [];
-  var CX = 600, CY = 100;
-
-  var f = board[0], fIsD = f.a === f.b;
-  var firstHalfW;
-  if (fIsD) {
-    layout.push({ a:f.a, b:f.b, side:f.side, playedBy:f.playedBy,
-      x: CX - TILE_W/2, y: CY - TILE_H/2, horizontal: false });
-    firstHalfW = TILE_W / 2;
-  } else {
-    layout.push({ a:f.a, b:f.b, side:f.side, playedBy:f.playedBy,
-      x: CX - TILE_H/2, y: CY - TILE_W/2, horizontal: true });
-    firstHalfW = TILE_H / 2;
-  }
-
-  var rightTiles = [], leftTiles = [];
+  /* Separate into left and right chains */
+  var first = board[0];
+  var leftTiles = [], rightTiles = [];
   for (var i = 1; i < board.length; i++) {
     if (board[i].side === 'right') rightTiles.push(board[i]);
     else leftTiles.push(board[i]);
   }
 
-  var rightStart = CX + firstHalfW + GAP;
-  var rr = snakeChain(rightTiles, rightStart, CY, 1, rightStart, rightStart + halfW);
-  layout.push.apply(layout, rr.placed);
+  /* Build full sequence: left chain reversed (so left-end is at start)
+     + first tile + right chain (right-end is at the end) */
+  var fullSeq = [];
+  for (var i = leftTiles.length - 1; i >= 0; i--) fullSeq.push(leftTiles[i]);
+  fullSeq.push(first);
+  for (var i = 0; i < rightTiles.length; i++) fullSeq.push(rightTiles[i]);
 
-  var leftStart = CX - firstHalfW - GAP;
-  var lr = snakeChain(leftTiles, leftStart, CY, -1, leftStart - halfW, leftStart);
-  layout.push.apply(layout, lr.placed);
+  /* Row width: enough for ~4-5 tiles, adapts to viewport */
+  var rowW = Math.max(200, Math.min(500, (viewportW || 400) * 1.2));
 
-  layout._rightEP = rr.endpoint;
-  layout._leftEP  = lr.endpoint;
-  return layout;
-}
-
-/*
-  snakeChain — Place tiles in a clean horizontal serpentine.
-*/
-function snakeChain(tiles, startCx, startCy, startDir, leftBound, rightBound) {
+  /* Lay out as a single horizontal serpentine */
   var placed = [];
-  var cx = startCx, cy = startCy, dir = startDir;
+  var x = 0, y = 0;
+  var dir = 1; /* 1 = left-to-right, -1 = right-to-left */
+  var rowStartX = 0;
+  /* Index in fullSeq where the left-endpoint is (start) and right-endpoint (end) */
+  var leftEPx, leftEPy, rightEPx, rightEPy;
 
-  for (var i = 0; i < tiles.length; i++) {
-    var t = tiles[i], isD = t.a === t.b;
-    var dim = isD ? TILE_W : TILE_H;
+  for (var i = 0; i < fullSeq.length; i++) {
+    var t = fullSeq[i];
+    var isD = t.a === t.b;
+    var dim = isD ? TILE_W : TILE_H; /* size along the chain direction */
 
-    var wouldExceed = false;
-    if (dir === 1 && cx + dim > rightBound) wouldExceed = true;
-    if (dir === -1 && cx - dim < leftBound) wouldExceed = true;
-    if (wouldExceed && i > 0) {
-      cy += ROW_SP;
-      dir *= -1;
+    /* Check if this tile would exceed the row */
+    if (i > 0) {
+      var wouldExceed = false;
+      if (dir === 1 && x + dim > rowW) wouldExceed = true;
+      if (dir === -1 && x - dim < 0) wouldExceed = true;
+
+      if (wouldExceed) {
+        /* Drop to next row, reverse direction */
+        y += ROW_GAP;
+        dir *= -1;
+        /* Snap x to the boundary we just bounced from */
+        if (dir === 1) x = 0;
+        /* dir was -1 and we bounced from left → now going right, x stays at 0 */
+        /* dir was 1 and we bounced from right → now going left, x stays at rowW */
+      }
     }
 
+    /* Place the tile */
     if (dir === 1) {
-      if (isD) {
-        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
-          x: cx, y: cy - TILE_H/2, horizontal: false });
-        cx += TILE_W + GAP;
-      } else {
-        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
-          x: cx, y: cy - TILE_W/2, horizontal: true });
-        cx += TILE_H + GAP;
-      }
+      placed.push({
+        a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+        x: x,
+        y: isD ? y - TILE_H / 2 : y - TILE_W / 2,
+        horizontal: !isD
+      });
+      x += dim + GAP;
     } else {
-      if (isD) {
-        cx -= TILE_W;
-        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
-          x: cx, y: cy - TILE_H/2, horizontal: false });
-        cx -= GAP;
-      } else {
-        cx -= TILE_H;
-        placed.push({ a:t.a, b:t.b, side:t.side, playedBy:t.playedBy,
-          x: cx, y: cy - TILE_W/2, horizontal: true });
-        cx -= GAP;
-      }
+      x -= dim;
+      placed.push({
+        a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+        x: x,
+        y: isD ? y - TILE_H / 2 : y - TILE_W / 2,
+        horizontal: !isD
+      });
+      x -= GAP;
     }
   }
-  return { placed: placed, endpoint: { x: cx, y: cy } };
+
+  /* Endpoint positions for tap zones */
+  /* Left endpoint is BEFORE the first tile in the sequence */
+  var firstPlaced = placed[0];
+  if (firstPlaced) {
+    if (placed.length > 1 || leftTiles.length === 0) {
+      /* Left EP: to the left of the first placed tile */
+      leftEPx = firstPlaced.x - 22;
+      leftEPy = firstPlaced.y + (firstPlaced.horizontal ? TILE_W / 2 : TILE_H / 2);
+    }
+  }
+  /* Right endpoint is AFTER the last tile in the sequence */
+  var lastPlaced = placed[placed.length - 1];
+  if (lastPlaced) {
+    var lw = lastPlaced.horizontal ? TILE_H : TILE_W;
+    rightEPx = lastPlaced.x + lw + 22;
+    rightEPy = lastPlaced.y + (lastPlaced.horizontal ? TILE_W / 2 : TILE_H / 2);
+  }
+
+  var result = { tiles: placed };
+  result.leftEP = (leftEPx !== undefined) ? { x: leftEPx, y: leftEPy } : null;
+  result.rightEP = (rightEPx !== undefined) ? { x: rightEPx, y: rightEPy } : null;
+  return result;
 }
 
 /*═══════════════════════════════════════════════════════════════
