@@ -397,7 +397,7 @@ a { color: var(--accent); text-decoration: none; }
 .hand-tile.selected { transform: translateY(-10px); box-shadow: 0 6px 20px var(--tile-glow); }
 .hand-tile:not(.playable) { opacity: 0.45; cursor: not-allowed; }
 .hand-tile:not(.playable):hover { transform: none; }
-.domino-tile { filter: drop-shadow(1px 2px 3px var(--tile-shadow)); }
+.domino-tile { filter: drop-shadow(1px 2px 4px rgba(0,0,0,0.45)); display: block; }
 
 /*──────────────────────────────────────────────
   CHAT PANEL
@@ -961,7 +961,7 @@ function renderOpponents(gs, mySeat) {
   });
 }
 
-const TILE_W=28, TILE_H=56, TILE_GAP=2;
+const TILE_W=30, TILE_H=60, TILE_GAP=2;
 
 function renderBoard(gs) {
   const c = document.getElementById('boardContainer'); c.innerHTML = '';
@@ -1010,14 +1010,82 @@ function placeTileLeft(t,x,y,dir,isD){ let h=true,px=x,py=y;
   return{...t,x:px,y:py,horizontal:h};}
 
 /*═══════════════════════════════════════════════════════════════
-  SVG TILE
+  SVG TILE — Fully rewritten with correct pip geometry
+  
+  Tile dimensions (viewBox units):
+    Horizontal: 60w × 30h  →  two halves of 30×30 side by side
+    Vertical:   30w × 60h  →  two halves of 30×30 stacked
+  
+  Each half uses a 3×3 grid for pip placement:
+    Grid origin at half-center, spacing = 8 units,
+    so pips range from center±8  (e.g. 7 to 23 in a 30-unit half)
+    Pip radius = 2.8 units → clearly visible solid black circles
 ═══════════════════════════════════════════════════════════════*/
-function createTileSVG(a,b,hor,_,scale=1){
-  const w=hor?56:28, h=hor?28:56, sw=w*scale, sh=h*scale;
-  const dm={0:[],1:[[1,1]],2:[[0,0],[2,2]],3:[[0,0],[1,1],[2,2]],4:[[0,0],[2,0],[0,2],[2,2]],5:[[0,0],[2,0],[1,1],[0,2],[2,2]],6:[[0,0],[2,0],[0,1],[2,1],[0,2],[2,2]]};
-  function dots(n,cx,cy,hs){ return (dm[n]||[]).map(([dx,dy])=>{const sp=hs*0.6,r=hs*0.1;return`<circle cx="${cx+(dx-1)*sp}" cy="${cy+(dy-1)*sp}" r="${r}" fill="var(--tile-dot)"/>`;}).join(''); }
-  if(hor){const hf=w/2,cy=h/2;return`<svg class="domino-tile" width="${sw}" height="${sh}" viewBox="0 0 ${w} ${h}"><rect x=".5" y=".5" width="${w-1}" height="${h-1}" rx="3" fill="var(--tile-face)" stroke="var(--tile-border)" stroke-width=".8"/><line x1="${hf}" y1="2" x2="${hf}" y2="${h-2}" stroke="var(--tile-border)" stroke-width=".6"/>${dots(a,hf/2,cy,hf)}${dots(b,hf+hf/2,cy,hf)}</svg>`;}
-  else{const hf=h/2,cx=w/2;return`<svg class="domino-tile" width="${sw}" height="${sh}" viewBox="0 0 ${w} ${h}"><rect x=".5" y=".5" width="${w-1}" height="${h-1}" rx="3" fill="var(--tile-face)" stroke="var(--tile-border)" stroke-width=".8"/><line x1="2" y1="${hf}" x2="${w-2}" y2="${hf}" stroke="var(--tile-border)" stroke-width=".6"/>${dots(a,cx,hf/2,hf)}${dots(b,cx,hf+hf/2,hf)}</svg>`;}
+function createTileSVG(a, b, horizontal, _, scale) {
+  if (scale === undefined) scale = 1;
+
+  /* Viewbox dimensions */
+  const VW = horizontal ? 60 : 30;
+  const VH = horizontal ? 30 : 60;
+  const renderW = Math.round(VW * scale);
+  const renderH = Math.round(VH * scale);
+
+  /* Pip layout: which grid positions [col,row] to fill for each value.
+     Grid is 3×3 where (0,0)=top-left, (1,1)=center, (2,2)=bottom-right */
+  const PIP_MAP = {
+    0: [],
+    1: [[1,1]],
+    2: [[2,0],[0,2]],
+    3: [[2,0],[1,1],[0,2]],
+    4: [[0,0],[2,0],[0,2],[2,2]],
+    5: [[0,0],[2,0],[1,1],[0,2],[2,2]],
+    6: [[0,0],[2,0],[0,1],[2,1],[0,2],[2,2]]
+  };
+
+  const GRID_SPACING = 7.5;   /* distance between adjacent grid positions */
+  const PIP_RADIUS   = 2.8;   /* pip circle radius */
+  const PIP_COLOR    = '#1a1a1a'; /* solid near-black for max contrast */
+
+  /* Generate pip circles for one half of the tile.
+     cx,cy = center of the half in viewBox coords */
+  function renderPips(value, cx, cy) {
+    const positions = PIP_MAP[value] || [];
+    return positions.map(function(pos) {
+      const col = pos[0], row = pos[1];
+      const px = cx + (col - 1) * GRID_SPACING;
+      const py = cy + (row - 1) * GRID_SPACING;
+      return '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1)
+           + '" r="' + PIP_RADIUS + '" fill="' + PIP_COLOR + '"/>';
+    }).join('');
+  }
+
+  /* Build the SVG string */
+  var svg = '<svg class="domino-tile" xmlns="http://www.w3.org/2000/svg"'
+    + ' width="' + renderW + '" height="' + renderH + '"'
+    + ' viewBox="0 0 ' + VW + ' ' + VH + '"'
+    + ' style="display:block;">';
+
+  /* Tile background with rounded rect */
+  svg += '<rect x="0.5" y="0.5" width="' + (VW - 1) + '" height="' + (VH - 1)
+      +  '" rx="4" ry="4" fill="#FFFFF0" stroke="#999" stroke-width="0.8"/>';
+
+  /* Divider line + pips depend on orientation */
+  if (horizontal) {
+    /* Divider: vertical line at center */
+    svg += '<line x1="30" y1="3" x2="30" y2="27" stroke="#999" stroke-width="0.7"/>';
+    /* Left half center: (15, 15),  Right half center: (45, 15) */
+    svg += renderPips(a, 15, 15);
+    svg += renderPips(b, 45, 15);
+  } else {
+    /* Divider: horizontal line at center */
+    svg += '<line x1="3" y1="30" x2="27" y2="30" stroke="#999" stroke-width="0.7"/>';
+    /* Top half center: (15, 15),  Bottom half center: (15, 45) */
+    svg += renderPips(a, 15, 15);
+    svg += renderPips(b, 15, 45);
+  }
+
+  svg += '</svg>';
+  return svg;
 }
 
 /*═══════════════════════════════════════════════════════════════
