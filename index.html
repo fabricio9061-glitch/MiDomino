@@ -486,14 +486,6 @@ a { color: var(--accent); text-decoration: none; }
 .sp-stat { text-align: center; }
 .sp-stat .stat-val { font-family: var(--font-display); font-size: 1.3rem; font-weight: 900; color: var(--accent); }
 .sp-stat .stat-label { font-size: 0.7rem; color: var(--text-secondary); }
-.bot-thinking {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 20px; font-size: 0.85rem; color: var(--text-secondary); z-index: 10;
-  display: none; animation: fadeIn 0.2s ease; pointer-events: none;
-}
-.bot-thinking.active { display: flex; align-items: center; gap: 8px; }
-
 /* Hand reveal overlay */
 .reveal-overlay {
   position: fixed; inset: 0; background: rgba(6,12,24,0.88);
@@ -694,7 +686,6 @@ a { color: var(--accent); text-decoration: none; }
     <div class="opponent-area" id="oppLeft" style="flex-direction:column; width:auto; padding:8px 4px;"></div>
     <div class="board-wrapper" id="boardWrapper">
       <div class="board-container" id="boardContainer"></div>
-      <div class="bot-thinking" id="botThinking"><div class="loader" style="width:18px;height:18px;border-width:2px;"></div> Bot pensando...</div>
     </div>
     <div class="opponent-area" id="oppRight" style="flex-direction:column; width:auto; padding:8px 4px;"></div>
   </div>
@@ -1107,8 +1098,8 @@ function renderOpponents(gs, mySeat) {
   });
 }
 
-const TILE_W = 30, TILE_H = 60, GAP = 4;
-var ROW_GAP = TILE_H + 10; /* vertical space between snake rows */
+const TILE_W = 30, TILE_H = 60, TGAP = 1;
+var ROW_STEP = TILE_H + 8; /* vertical distance between row centerlines */
 
 /*═══════════════════════════════════════════════════════════════
   renderBoard — Auto-fit + endpoint tap zones
@@ -1131,15 +1122,17 @@ function renderBoard(gs) {
 
   var wrapW = wrapper.clientWidth;
   var wrapH = wrapper.clientHeight;
-  var result = layoutUnifiedSnake(gs.board, wrapW);
-  var layout = result.tiles;
+  /* Row width scales with viewport — enough for 4-6 tiles per row */
+  var maxRowW = Math.max(220, Math.min(580, wrapW * 1.3));
+  var result = layoutChain(gs.board, maxRowW);
+  var tiles = result.tiles;
 
   /* Bounding box */
   var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-  for (var i = 0; i < layout.length; i++) {
-    var it = layout[i];
-    var tw = it.horizontal ? TILE_H : TILE_W;
-    var th = it.horizontal ? TILE_W : TILE_H;
+  for (var i = 0; i < tiles.length; i++) {
+    var it = tiles[i];
+    var tw = it.hor ? TILE_H : TILE_W;
+    var th = it.hor ? TILE_W : TILE_H;
     if (it.x < minX) minX = it.x;
     if (it.y < minY) minY = it.y;
     if (it.x + tw > maxX) maxX = it.x + tw;
@@ -1149,167 +1142,151 @@ function renderBoard(gs) {
   var PAD = 14;
   var boardW = (maxX - minX) + PAD * 2;
   var boardH = (maxY - minY) + PAD * 2;
-
   container.style.width  = boardW + 'px';
   container.style.height = boardH + 'px';
   container.style.position = 'absolute';
 
   /* Draw tiles */
-  for (var i = 0; i < layout.length; i++) {
-    var it = layout[i];
+  for (var i = 0; i < tiles.length; i++) {
+    var it = tiles[i];
     var d = document.createElement('div');
     d.className = 'board-tile';
     d.style.left = (it.x - minX + PAD) + 'px';
     d.style.top  = (it.y - minY + PAD) + 'px';
-    d.innerHTML = createTileSVG(it.a, it.b, it.horizontal, false, 1);
+    d.innerHTML = createTileSVG(it.a, it.b, it.hor, false, 1);
     container.appendChild(d);
   }
 
-  /* Endpoint tap zones when a tile is selected */
+  /* Endpoint tap zones */
   if (selectedTile && gs.status === 'playing') {
-    var stile = parseTile(selectedTile);
-    var canL = stile.a === gs.leftEnd || stile.b === gs.leftEnd;
-    var canR = stile.a === gs.rightEnd || stile.b === gs.rightEnd;
-    var epSize = 44;
+    var st = parseTile(selectedTile);
+    var canL = st.a === gs.leftEnd || st.b === gs.leftEnd;
+    var canR = st.a === gs.rightEnd || st.b === gs.rightEnd;
+    var epS = 44;
     if (canL && result.leftEP) {
       var ep = result.leftEP;
-      var d1 = document.createElement('div'); d1.className = 'board-endpoint';
-      d1.style.left = (ep.x - minX + PAD - epSize/2) + 'px';
-      d1.style.top  = (ep.y - minY + PAD - epSize/2) + 'px';
-      d1.style.width = epSize + 'px'; d1.style.height = epSize + 'px';
-      d1.innerHTML = '<div class="ep-zone">\u25C0</div>';
-      d1.onclick = function() { playTile(selectedTile, 'left'); };
-      container.appendChild(d1);
+      var e1 = document.createElement('div'); e1.className = 'board-endpoint';
+      e1.style.left = (ep.x - minX + PAD - epS/2) + 'px';
+      e1.style.top  = (ep.y - minY + PAD - epS/2) + 'px';
+      e1.style.width = epS + 'px'; e1.style.height = epS + 'px';
+      e1.innerHTML = '<div class="ep-zone">\u25C0</div>';
+      e1.onclick = function() { playTile(selectedTile, 'left'); };
+      container.appendChild(e1);
     }
     if (canR && result.rightEP) {
       var ep2 = result.rightEP;
-      var d2 = document.createElement('div'); d2.className = 'board-endpoint';
-      d2.style.left = (ep2.x - minX + PAD - epSize/2) + 'px';
-      d2.style.top  = (ep2.y - minY + PAD - epSize/2) + 'px';
-      d2.style.width = epSize + 'px'; d2.style.height = epSize + 'px';
-      d2.innerHTML = '<div class="ep-zone">\u25B6</div>';
-      d2.onclick = function() { playTile(selectedTile, 'right'); };
-      container.appendChild(d2);
+      var e2 = document.createElement('div'); e2.className = 'board-endpoint';
+      e2.style.left = (ep2.x - minX + PAD - epS/2) + 'px';
+      e2.style.top  = (ep2.y - minY + PAD - epS/2) + 'px';
+      e2.style.width = epS + 'px'; e2.style.height = epS + 'px';
+      e2.innerHTML = '<div class="ep-zone">\u25B6</div>';
+      e2.onclick = function() { playTile(selectedTile, 'right'); };
+      container.appendChild(e2);
     }
   }
 
-  /* Auto-scale to always fit */
+  /* Auto-scale to fit */
   var availW = Math.max(80, wrapW - 8);
   var availH = Math.max(80, wrapH - 8);
   var scale  = Math.min(availW / boardW, availH / boardH, 1.5);
-  var scaledW = boardW * scale, scaledH = boardH * scale;
+  var sW = boardW * scale, sH = boardH * scale;
   container.style.transformOrigin = '0 0';
   container.style.transform = 'scale(' + scale.toFixed(4) + ')';
-  container.style.left = ((wrapW - scaledW) / 2) + 'px';
-  container.style.top  = ((wrapH - scaledH) / 2) + 'px';
+  container.style.left = ((wrapW - sW) / 2) + 'px';
+  container.style.top  = ((wrapH - sH) / 2) + 'px';
 }
 
 /*═══════════════════════════════════════════════════════════════
-  layoutUnifiedSnake — ONE continuous serpentine for all tiles
+  layoutChain — Connected-tile serpentine
   
-  Domino chains have a left-end and a right-end. Instead of
-  rendering them as two independent snakes, we build the FULL
-  sequence:   [...left tiles reversed] + [first tile] + [...right tiles]
-  and lay it out as a single left-to-right line that wraps into
-  clean horizontal rows, like reading text that alternates direction.
+  Builds the FULL domino sequence as one continuous chain:
+    [left-end ... left tiles reversed ... FIRST ... right tiles ... right-end]
   
-  This produces: one clear path, no forks, no disconnected halves,
-  easy to follow the entire game sequence on any screen.
+  Tiles are placed TOUCHING each other (1px hairline gap) using
+  a cursor that tracks the exact connection-edge center point.
+  The chain runs horizontally and makes clean U-turns at row
+  boundaries, creating a compact serpentine that reads naturally.
+  
+  Tile orientation rules (matching real domino):
+    - Horizontal chain: normal tiles lie flat (60×30),
+      doubles stand perpendicular (30×60)
+    - At U-turns: chain drops down one row and reverses
 ═══════════════════════════════════════════════════════════════*/
-function layoutUnifiedSnake(board, viewportW) {
+function layoutChain(board, maxRowW) {
   if (!board || board.length === 0) return { tiles: [], leftEP: null, rightEP: null };
+  if (!maxRowW) maxRowW = 400;
 
-  /* Separate into left and right chains */
+  /* Build the full sequence */
   var first = board[0];
-  var leftTiles = [], rightTiles = [];
+  var leftArr = [], rightArr = [];
   for (var i = 1; i < board.length; i++) {
-    if (board[i].side === 'right') rightTiles.push(board[i]);
-    else leftTiles.push(board[i]);
+    if (board[i].side === 'right') rightArr.push(board[i]);
+    else leftArr.push(board[i]);
   }
+  var seq = [];
+  for (var i = leftArr.length - 1; i >= 0; i--) seq.push(leftArr[i]);
+  seq.push(first);
+  for (var i = 0; i < rightArr.length; i++) seq.push(rightArr[i]);
 
-  /* Build full sequence: left chain reversed (so left-end is at start)
-     + first tile + right chain (right-end is at the end) */
-  var fullSeq = [];
-  for (var i = leftTiles.length - 1; i >= 0; i--) fullSeq.push(leftTiles[i]);
-  fullSeq.push(first);
-  for (var i = 0; i < rightTiles.length; i++) fullSeq.push(rightTiles[i]);
-
-  /* Row width: enough for ~4-5 tiles, adapts to viewport */
-  var rowW = Math.max(200, Math.min(500, (viewportW || 400) * 1.2));
-
-  /* Lay out as a single horizontal serpentine */
+  /* Cursor: (cx, cy) = center of the connection edge where next tile attaches
+     dir: 1 = going right, -1 = going left */
   var placed = [];
-  var x = 0, y = 0;
-  var dir = 1; /* 1 = left-to-right, -1 = right-to-left */
-  var rowStartX = 0;
-  /* Index in fullSeq where the left-endpoint is (start) and right-endpoint (end) */
-  var leftEPx, leftEPy, rightEPx, rightEPy;
+  var cx = 0, cy = TILE_H / 2; /* start with room above for doubles */
+  var dir = 1;
 
-  for (var i = 0; i < fullSeq.length; i++) {
-    var t = fullSeq[i];
+  for (var i = 0; i < seq.length; i++) {
+    var t = seq[i];
     var isD = t.a === t.b;
-    var dim = isD ? TILE_W : TILE_H; /* size along the chain direction */
+    var dim = isD ? TILE_W : TILE_H; /* width along chain direction */
 
-    /* Check if this tile would exceed the row */
+    /* Check: would this tile exceed the row boundary? */
     if (i > 0) {
-      var wouldExceed = false;
-      if (dir === 1 && x + dim > rowW) wouldExceed = true;
-      if (dir === -1 && x - dim < 0) wouldExceed = true;
-
-      if (wouldExceed) {
-        /* Drop to next row, reverse direction */
-        y += ROW_GAP;
+      var exceedsRight = (dir === 1 && cx + dim > maxRowW);
+      var exceedsLeft  = (dir === -1 && cx - dim < 0);
+      if (exceedsRight || exceedsLeft) {
+        /* U-turn: drop to next row, reverse */
+        cy += ROW_STEP;
         dir *= -1;
-        /* Snap x to the boundary we just bounced from */
-        if (dir === 1) x = 0;
-        /* dir was -1 and we bounced from left → now going right, x stays at 0 */
-        /* dir was 1 and we bounced from right → now going left, x stays at rowW */
+        /* After reversing, don't re-check — just place from the edge */
       }
     }
 
-    /* Place the tile */
+    /* Place the tile at cursor position */
+    var px, py;
     if (dir === 1) {
-      placed.push({
-        a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
-        x: x,
-        y: isD ? y - TILE_H / 2 : y - TILE_W / 2,
-        horizontal: !isD
-      });
-      x += dim + GAP;
+      px = cx;
+      py = isD ? (cy - TILE_H / 2) : (cy - TILE_W / 2);
+      placed.push({ a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+                     x: px, y: py, hor: !isD });
+      cx += dim + TGAP;
     } else {
-      x -= dim;
-      placed.push({
-        a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
-        x: x,
-        y: isD ? y - TILE_H / 2 : y - TILE_W / 2,
-        horizontal: !isD
-      });
-      x -= GAP;
+      px = cx - dim;
+      py = isD ? (cy - TILE_H / 2) : (cy - TILE_W / 2);
+      placed.push({ a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+                     x: px, y: py, hor: !isD });
+      cx -= dim + TGAP;
     }
   }
 
-  /* Endpoint positions for tap zones */
-  /* Left endpoint is BEFORE the first tile in the sequence */
-  var firstPlaced = placed[0];
-  if (firstPlaced) {
-    if (placed.length > 1 || leftTiles.length === 0) {
-      /* Left EP: to the left of the first placed tile */
-      leftEPx = firstPlaced.x - 22;
-      leftEPy = firstPlaced.y + (firstPlaced.horizontal ? TILE_W / 2 : TILE_H / 2);
-    }
+  /* Endpoint positions for tap-to-place zones */
+  var leftEP = null, rightEP = null;
+
+  /* Left endpoint: before the first tile in sequence */
+  if (placed.length > 0) {
+    var fp = placed[0];
+    var fpW = fp.hor ? TILE_H : TILE_W;
+    var fpHalfH = fp.hor ? TILE_W / 2 : TILE_H / 2;
+    leftEP = { x: fp.x - 24, y: fp.y + fpHalfH };
   }
-  /* Right endpoint is AFTER the last tile in the sequence */
-  var lastPlaced = placed[placed.length - 1];
-  if (lastPlaced) {
-    var lw = lastPlaced.horizontal ? TILE_H : TILE_W;
-    rightEPx = lastPlaced.x + lw + 22;
-    rightEPy = lastPlaced.y + (lastPlaced.horizontal ? TILE_W / 2 : TILE_H / 2);
+  /* Right endpoint: after the last tile in sequence */
+  if (placed.length > 0) {
+    var lp = placed[placed.length - 1];
+    var lpW = lp.hor ? TILE_H : TILE_W;
+    var lpHalfH = lp.hor ? TILE_W / 2 : TILE_H / 2;
+    rightEP = { x: lp.x + lpW + 24, y: lp.y + lpHalfH };
   }
 
-  var result = { tiles: placed };
-  result.leftEP = (leftEPx !== undefined) ? { x: leftEPx, y: leftEPy } : null;
-  result.rightEP = (rightEPx !== undefined) ? { x: rightEPx, y: rightEPy } : null;
-  return result;
+  return { tiles: placed, leftEP: leftEP, rightEP: rightEP };
 }
 
 /*═══════════════════════════════════════════════════════════════
@@ -1750,13 +1727,11 @@ function spStartNewHand(isFirstHand) {
 /* Schedule a bot turn if it's a bot's turn */
 function spScheduleBotTurn() {
   if (!isSinglePlayer || !gameState || gameState.status !== 'playing') return;
-  const uid = gameState.currentTurn;
+  var uid = gameState.currentTurn;
   if (!uid || !uid.startsWith('bot')) return;
-  const delay = spBotSpeed + Math.floor(Math.random() * 400) - 200;
-  document.getElementById('botThinking').classList.add('active');
+  var delay = spBotSpeed + Math.floor(Math.random() * 400) - 200;
   if (spBotTimer) clearTimeout(spBotTimer);
-  spBotTimer = setTimeout(() => {
-    document.getElementById('botThinking').classList.remove('active');
+  spBotTimer = setTimeout(function() {
     spExecuteBotTurn(uid);
   }, Math.max(300, delay));
 }
@@ -2115,7 +2090,6 @@ async function leaveRoom(){
 function backToLobby(){
   if (spBotTimer) { clearTimeout(spBotTimer); spBotTimer = null; }
   isSinglePlayer = false;
-  document.getElementById('botThinking').classList.remove('active');
   cleanupGameListeners();currentRoomId=null;currentRoom=null;gameState=null;selectedTile=null;showScreen('lobbyScreen');
 }
 function cleanupGameListeners(){if(unsubRoom){unsubRoom();unsubRoom=null;}if(unsubGame){unsubGame();unsubGame=null;}if(unsubChat){unsubChat();unsubChat=null;}}
