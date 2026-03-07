@@ -388,6 +388,8 @@ a { color: var(--accent); text-decoration: none; }
   flex: 1; overflow: hidden; position: relative;
   display: flex; align-items: center; justify-content: center;
   -webkit-overflow-scrolling: touch;
+  background: radial-gradient(ellipse at center, #1a5c2a 0%, #144921 50%, #0e3518 100%);
+  box-shadow: inset 0 2px 20px rgba(0,0,0,0.5);
 }
 .board-container {
   position: absolute;
@@ -431,7 +433,7 @@ a { color: var(--accent); text-decoration: none; }
 .hand-tile.selected { transform: translateY(-10px); box-shadow: 0 6px 20px var(--tile-glow); }
 .hand-tile:not(.playable) { opacity: 0.45; cursor: not-allowed; }
 .hand-tile:not(.playable):hover { transform: none; }
-.domino-tile { filter: drop-shadow(1px 2px 4px rgba(0,0,0,0.45)); display: block; }
+.domino-tile { filter: drop-shadow(2px 3px 4px rgba(0,0,0,0.55)); display: block; }
 
 /*──────────────────────────────────────────────
   CHAT PANEL
@@ -1101,7 +1103,7 @@ function renderOpponents(gs, mySeat) {
 const TW = 30, TH = 60;
 
 /*═══════════════════════════════════════════════════════════════
-  renderBoard — Connected chain, auto-scaled, with tap endpoints
+  renderBoard — Connected chain with real U-turns, auto-scaled
 ═══════════════════════════════════════════════════════════════*/
 function renderBoard(gs) {
   var box = document.getElementById('boardContainer');
@@ -1111,53 +1113,27 @@ function renderBoard(gs) {
 
   if (!gs.board || gs.board.length === 0) {
     box.style.cssText = 'width:100%;height:100%;position:relative;';
-    box.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;' +
+    box.innerHTML = '<div style="color:rgba(255,255,255,0.4);font-size:0.9rem;text-align:center;' +
       'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">Esperando primera ficha...</div>';
     return;
   }
 
   var wW = wrap.clientWidth, wH = wrap.clientHeight;
-  /* Row width adapts to viewport — targets ~5-7 normal tiles per row */
-  var rowLimit = Math.max(250, Math.min(600, wW * 1.3));
-  var chain = buildChain(gs.board, rowLimit);
+  var rowW = Math.max(240, Math.min(620, wW * 1.3));
+  var chain = buildChain(gs.board, rowW);
 
-  /* Bounding box */
+  /* Bounding box of all placed tiles */
   var x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
   chain.tiles.forEach(function(t) {
-    var w = t.hor ? TH : TW, h = t.hor ? TW : TH;
-    if (t.x < x1) x1 = t.x;  if (t.y < y1) y1 = t.y;
-    if (t.x + w > x2) x2 = t.x + w;  if (t.y + h > y2) y2 = t.y + h;
-  });
-  /* Include connectors in bbox */
-  chain.connectors.forEach(function(c) {
-    if (c.x1 < x1) x1 = c.x1; if (c.x2 > x2) x2 = c.x2;
-    if (c.y1 < y1) y1 = c.y1; if (c.y2 > y2) y2 = c.y2;
+    if (t.x < x1) x1 = t.x;
+    if (t.y < y1) y1 = t.y;
+    if (t.x + t.w > x2) x2 = t.x + t.w;
+    if (t.y + t.h > y2) y2 = t.y + t.h;
   });
 
-  var PAD = 18;
+  var PAD = 16;
   var bW = (x2 - x1) + PAD * 2, bH = (y2 - y1) + PAD * 2;
   box.style.cssText = 'width:' + bW + 'px;height:' + bH + 'px;position:absolute;';
-
-  /* Draw connector lines between rows */
-  if (chain.connectors.length > 0) {
-    var svgNS = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width', bW);
-    svg.setAttribute('height', bH);
-    svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-    chain.connectors.forEach(function(c) {
-      var line = document.createElementNS(svgNS, 'line');
-      line.setAttribute('x1', c.x1 - x1 + PAD);
-      line.setAttribute('y1', c.y1 - y1 + PAD);
-      line.setAttribute('x2', c.x2 - x1 + PAD);
-      line.setAttribute('y2', c.y2 - y1 + PAD);
-      line.setAttribute('stroke', '#667');
-      line.setAttribute('stroke-width', '2');
-      line.setAttribute('stroke-dasharray', '4,3');
-      svg.appendChild(line);
-    });
-    box.appendChild(svg);
-  }
 
   /* Draw tiles */
   chain.tiles.forEach(function(t) {
@@ -1176,24 +1152,22 @@ function renderBoard(gs) {
     var canR = st.a === gs.rightEnd || st.b === gs.rightEnd;
     var eS = 42;
     if (canL && chain.leftEP) {
-      var ep = chain.leftEP;
       var e1 = document.createElement('div'); e1.className = 'board-endpoint';
-      e1.style.cssText = 'left:' + (ep.x - x1 + PAD - eS/2) + 'px;top:' + (ep.y - y1 + PAD - eS/2) + 'px;width:' + eS + 'px;height:' + eS + 'px;';
+      e1.style.cssText = 'left:' + (chain.leftEP.x - x1 + PAD - eS/2) + 'px;top:' + (chain.leftEP.y - y1 + PAD - eS/2) + 'px;width:' + eS + 'px;height:' + eS + 'px;';
       e1.innerHTML = '<div class="ep-zone">\u25C0</div>';
       e1.onclick = function() { playTile(selectedTile, 'left'); };
       box.appendChild(e1);
     }
     if (canR && chain.rightEP) {
-      var ep2 = chain.rightEP;
       var e2 = document.createElement('div'); e2.className = 'board-endpoint';
-      e2.style.cssText = 'left:' + (ep2.x - x1 + PAD - eS/2) + 'px;top:' + (ep2.y - y1 + PAD - eS/2) + 'px;width:' + eS + 'px;height:' + eS + 'px;';
+      e2.style.cssText = 'left:' + (chain.rightEP.x - x1 + PAD - eS/2) + 'px;top:' + (chain.rightEP.y - y1 + PAD - eS/2) + 'px;width:' + eS + 'px;height:' + eS + 'px;';
       e2.innerHTML = '<div class="ep-zone">\u25B6</div>';
       e2.onclick = function() { playTile(selectedTile, 'right'); };
       box.appendChild(e2);
     }
   }
 
-  /* Auto-scale to fit viewport */
+  /* Auto-scale */
   var aW = Math.max(60, wW - 6), aH = Math.max(60, wH - 6);
   var sc = Math.min(aW / bW, aH / bH, 1.5);
   box.style.transformOrigin = '0 0';
@@ -1203,20 +1177,23 @@ function renderBoard(gs) {
 }
 
 /*═══════════════════════════════════════════════════════════════
-  buildChain — Lay out the full domino chain as a connected
-  serpentine with tiles TOUCHING and U-turn connectors.
+  buildChain — True domino chain with physical U-turn tiles
 
-  The chain spine runs horizontally. Normal tiles lie flat (60×30)
-  along the spine. Doubles stand perpendicular (30×60) centered
-  on the spine. Tiles have ZERO gap between them.
+  The chain runs horizontally (tiles flat: 60w×30h). When it
+  reaches the row edge, a TURN TILE is placed vertically
+  (30w×60h) acting as the corner piece. Then the chain continues
+  horizontally in the opposite direction from the bottom of
+  that turn tile.
 
-  When the chain would exceed the row boundary, it makes a clean
-  U-turn: drop down one row-step and reverse direction. A dashed
-  connector line links the end of one row to the start of the next.
+  Doubles always stand perpendicular (30w×60h) and are centered
+  on the spine, matching real domino convention.
+
+  The result looks exactly like a real table: a connected
+  serpentine with smooth U-turns at the edges.
 ═══════════════════════════════════════════════════════════════*/
-function buildChain(board, rowLimit) {
-  if (!board || !board.length) return { tiles: [], connectors: [], leftEP: null, rightEP: null };
-  if (!rowLimit) rowLimit = 450;
+function buildChain(board, rowW) {
+  if (!board || !board.length) return { tiles: [], leftEP: null, rightEP: null };
+  if (!rowW) rowW = 450;
 
   /* Build full sequence: leftChain reversed + first + rightChain */
   var first = board[0], leftArr = [], rightArr = [];
@@ -1230,73 +1207,118 @@ function buildChain(board, rowLimit) {
   for (var i = 0; i < rightArr.length; i++) seq.push(rightArr[i]);
 
   /*
-    Cursor model:
-    cx = x-position of the CONNECTION EDGE (where next tile attaches)
-    cy = y-center of the spine (tiles center vertically on this)
-    dir = 1 (going right) or -1 (going left)
-
-    Row step must accommodate the tallest tile (double = 60px high)
-    so rows don't overlap: rowStep = TH + 6 = 66
-  */
-  var rowStep = TH + 6;
+   * Cursor tracks the attachment point:
+   *   (cx, cy) = center of the connection edge
+   *   dir = 1 (right) or -1 (left)
+   *   orientation = 'h' (horizontal row) or 'v' (placing a vertical turn tile)
+   *
+   * Row spine Y = cy; tiles center vertically on it.
+   * When a turn happens, we place the tile as a VERTICAL piece at the edge,
+   * then move cy down by TH (the height of that vertical tile) and reverse.
+   */
   var tiles = [];
-  var connectors = [];
-  var cx = 0, cy = TH / 2 + 2; /* start with headroom for doubles */
+  var cx = TW; /* leave margin for left endpoint */
+  var cy = TH / 2 + 2;
   var dir = 1;
 
-  for (var i = 0; i < seq.length; i++) {
-    var t = seq[i], isD = t.a === t.b;
-    var tileW = isD ? TW : TH;  /* width along chain direction */
-    var tileH = isD ? TH : TW;  /* height perpendicular to chain */
+  for (var idx = 0; idx < seq.length; idx++) {
+    var t = seq[idx];
+    var isD = t.a === t.b;
 
-    /* Would placing this tile exceed the row boundary? */
-    if (i > 0) {
-      var overflow = false;
-      if (dir === 1 && cx + tileW > rowLimit) overflow = true;
-      if (dir === -1 && cx - tileW < 0) overflow = true;
+    /* Check if we need a U-turn BEFORE placing this tile */
+    if (idx > 0) {
+      var needTurn = false;
+      if (!isD) {
+        /* Normal tile: 60px wide */
+        if (dir === 1 && cx + TH > rowW) needTurn = true;
+        if (dir === -1 && cx - TH < 0) needTurn = true;
+      } else {
+        /* Double: 30px wide but also check turn for doubles */
+        if (dir === 1 && cx + TW > rowW) needTurn = true;
+        if (dir === -1 && cx - TW < 0) needTurn = true;
+      }
 
-      if (overflow) {
-        /* Record connector from old row end to new row start */
-        var connX = (dir === 1) ? cx - 1 : cx + 1;
-        var connTopY = cy;
-        cy += rowStep;
+      if (needTurn) {
+        /*
+         * U-TURN: place this tile as a vertical turn piece.
+         * It goes down from the current spine to bridge to the next row.
+         *
+         * For any tile at a turn: render it vertical (30w × 60h).
+         * Position: at the edge of the row, top aligned with current spine center - TW/2,
+         * and it extends down by TH.
+         */
+        var turnX;
+        if (dir === 1) {
+          turnX = cx;
+        } else {
+          turnX = cx - TW;
+        }
+        var turnY = cy - TW / 2; /* top of turn tile aligns near current spine */
+
+        tiles.push({
+          a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+          x: turnX, y: turnY,
+          w: TW, h: TH,
+          hor: false /* vertical */
+        });
+
+        /* Move cursor: after the turn tile, the new spine is below it */
+        cy = turnY + TH + TW / 2; /* new spine = bottom of turn tile + half of normal tile height */
         dir *= -1;
-        var connBotY = cy;
-        connectors.push({ x1: connX, y1: connTopY, x2: connX, y2: connBotY });
+        /* cx snaps to the same edge the turn tile is at */
+        if (dir === 1) {
+          cx = turnX + TW; /* continue right from right edge of turn tile */
+        } else {
+          cx = turnX; /* continue left from left edge of turn tile */
+        }
+        continue; /* tile placed as turn, move to next */
       }
     }
 
-    /* Place tile: x is top-left corner, y is top-left corner */
-    var px, py;
-    py = cy - tileH / 2;
-
-    if (dir === 1) {
-      px = cx;
-      tiles.push({ a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
-                    x: px, y: py, hor: !isD });
-      cx += tileW; /* no gap — tiles touch */
+    /* Normal placement on the horizontal spine */
+    if (isD) {
+      /* Double: vertical (30w × 60h) centered on spine */
+      var px, py;
+      py = cy - TH / 2;
+      if (dir === 1) {
+        px = cx;
+        cx += TW;
+      } else {
+        px = cx - TW;
+        cx -= TW;
+      }
+      tiles.push({
+        a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+        x: px, y: py, w: TW, h: TH, hor: false
+      });
     } else {
-      px = cx - tileW;
-      tiles.push({ a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
-                    x: px, y: py, hor: !isD });
-      cx -= tileW;
+      /* Normal: horizontal (60w × 30h) centered on spine */
+      var px, py;
+      py = cy - TW / 2;
+      if (dir === 1) {
+        px = cx;
+        cx += TH;
+      } else {
+        px = cx - TH;
+        cx -= TH;
+      }
+      tiles.push({
+        a: t.a, b: t.b, side: t.side, playedBy: t.playedBy,
+        x: px, y: py, w: TH, h: TW, hor: true
+      });
     }
   }
 
-  /* Endpoint positions for tap-to-place */
+  /* Endpoints for tap zones */
   var leftEP = null, rightEP = null;
   if (tiles.length > 0) {
     var fp = tiles[0];
-    var fpH = fp.hor ? TW : TH;
-    leftEP = { x: fp.x - 22, y: fp.y + fpH / 2 };
-
+    leftEP = { x: fp.x - 22, y: fp.y + fp.h / 2 };
     var lp = tiles[tiles.length - 1];
-    var lpW = lp.hor ? TH : TW;
-    var lpH = lp.hor ? TW : TH;
-    rightEP = { x: lp.x + lpW + 22, y: lp.y + lpH / 2 };
+    rightEP = { x: lp.x + lp.w + 22, y: lp.y + lp.h / 2 };
   }
 
-  return { tiles: tiles, connectors: connectors, leftEP: leftEP, rightEP: rightEP };
+  return { tiles: tiles, leftEP: leftEP, rightEP: rightEP };
 }
 /*═══════════════════════════════════════════════════════════════
   showHandReveal — End-of-hand reveal animation
